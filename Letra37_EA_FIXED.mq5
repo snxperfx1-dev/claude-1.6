@@ -1976,20 +1976,25 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // SECTION 24 — TRADE STATE
    //==============================================================
    // HTF FLIP ZONE EXIT + REVERSAL HUNT ACTIVATION
-   // When a long approaches the HTF flip zone from below → EXIT (natural TP) + hunt sells
-   // When a short approaches the HTF flip zone from above → EXIT (natural TP) + hunt buys
-   // The flip zone is both the EXIT for the current wave and the ENTRY for the reversal.
-   bool _approachingFlipFromBelow = g_tradeDir==1 && !naf(_ctx_fb) && cl>=_ctx_fb-atr*0.5;
-   bool _approachingFlipFromAbove = g_tradeDir==-1 && !naf(_ctx_ft) && cl<=_ctx_ft+atr*0.5;
-   bool _flipZoneExit = _approachingFlipFromBelow || _approachingFlipFromAbove;
+   // The flip zone is the BOUNDARY between buy/sell territory.
+   // BUYS are below flip zone. SELLS are above flip zone.
+   // When a long crosses ABOVE the flip zone top → it's now in SELL territory → EXIT + hunt sells
+   // When a short crosses BELOW the flip zone bottom → it's now in BUY territory → EXIT + hunt buys
+   bool _crossedAboveFlip = g_tradeDir==1 && !naf(_ctx_ft) && cl>=_ctx_ft+atr*0.3;   // long entered supply territory
+   bool _crossedBelowFlip = g_tradeDir==-1 && !naf(_ctx_fb) && cl<=_ctx_fb-atr*0.3;  // short entered demand territory
+   bool _flipZoneExit = _crossedAboveFlip || _crossedBelowFlip;
    // On flip zone exit: switch hunt mode to the opposite direction
-   if(_flipZoneExit && g_tradeDir==1 && g_huntMode!=(-1)){
+   // Long exited into supply → now hunt SELLS above the flip zone
+   if(_crossedAboveFlip && g_huntMode!=-1){
       g_huntMode=-1; g_huntActivatedBar=i;
-      g_huntDemandLo=nz(_ctx_fb,cl); g_huntDemandHi=nz(_ctx_ft,cl+atr*2.0);
+      g_huntDemandLo=nz(_ctx_ft,cl-atr);            // sell zone starts at flip zone top
+      g_huntDemandHi=g_huntDemandLo+atr*3.0;        // extends up into supply
    }
-   if(_flipZoneExit && g_tradeDir==-1 && g_huntMode!=1){
+   // Short exited into demand → now hunt BUYS below the flip zone
+   if(_crossedBelowFlip && g_huntMode!=1){
       g_huntMode=1; g_huntActivatedBar=i;
-      g_huntDemandHi=nz(_ctx_ft,cl); g_huntDemandLo=nz(_ctx_fb,cl-atr*2.0);
+      g_huntDemandHi=nz(_ctx_fb,cl+atr);            // buy zone starts at flip zone bottom
+      g_huntDemandLo=g_huntDemandHi-atr*3.0;        // extends down into demand
    }
 
    // EXIT CONDITIONS
