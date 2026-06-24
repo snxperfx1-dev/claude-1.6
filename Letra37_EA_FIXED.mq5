@@ -1118,8 +1118,8 @@ double ChartPivotLow(const double &l[], const int i, const int len)
 }
 double SMAlastN(const double &arr[], const int n)
 {
-   int sz=ArraySize(arr); if(sz==0||n<=0) return(0); int cnt=(sz<n)?sz:n; double s=0;
-   for(int k=sz-cnt;k<sz;k++) s+=arr[k]; return(cnt>0?s/cnt:0);
+   int sz=ArraySize(arr); if(sz==0) return(0); int cnt=(sz<n)?sz:n; double s=0;
+   for(int k=sz-cnt;k<sz;k++) s+=arr[k]; return(s/cnt);
 }
 
 //--- htf bias persistent (Sec3) ---
@@ -1439,7 +1439,6 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double currentToFlipMid=(!naf(g_flipTop)&&!naf(g_flipBot))?MathAbs(cl-(g_flipTop+g_flipBot)/2.0):atr*4.0;
    double currentToExtreme=direction==1?MathAbs(nz(g_cycleHigh,cl+atr)-cl):MathAbs(cl-nz(g_cycleLow,cl-atr));
    double _posNormDen=fmax2(waveTotalRange,atr*0.5);
-   if(_posNormDen<=0) _posNormDen=atr*5.0;
    double posDistToCreation   =fmin2(currentToExtreme/_posNormDen*100.0,100.0);
    double posDistToDemand     =fmin2(currentToFlipMid/_posNormDen*100.0,100.0);
 
@@ -3649,7 +3648,7 @@ void ContextRun(const int bars)
 // EA INPUT ENUMS
 //==================================================================
 enum ENUM_SIG_SOURCE { SIG_ENGINE, SIG_V72, SIG_EITHER, SIG_BOTH };   // arrows / DOE / either(OR) / both(AND)
-enum ENUM_LOT_MODE   { LOT_RISK_PCT };   // risk-based only (fixed lot removed)
+enum ENUM_LOT_MODE   { LOT_FIXED, LOT_RISK_PCT };
 enum ENUM_SL_MODE    { SL_ENGINE, SL_ATR, SL_FIXED };
 //  SPEC AUDIT: ENUM_TP_MODE and ENUM_TRAIL_MODE removed (no TP targets, no trailing).
 enum ENUM_MIN_GRADE  { G_APLUS, G_A, G_B, G_C, G_D };
@@ -3673,10 +3672,10 @@ input bool          InpRequireHtfAlign  = false;        // Require HTF alignment
 input double        InpMinConfidence    = 0.0;          // Min DOE confidence % (0=off)
 
 input group "Letra37 EA - Risk / Sizing"
-input ENUM_LOT_MODE InpLotMode          = LOT_RISK_PCT; // Position sizing: risk-based only
-input double        InpMaxRiskDollars    = 600.0;        // HARD CAP: max dollar risk per trade (never exceeded regardless of SL size or equity %)
-input double        InpRiskPercent      = 1.0;          // Risk % of equity per trade (capped at InpMaxRiskDollars)
-input double        InpMaxLot           = 2.0;          // Hard lot cap (2 lots fixed for gold)
+input ENUM_LOT_MODE InpLotMode          = LOT_RISK_PCT; // Position sizing mode
+input double        InpFixedLot         = 0.10;         // Fixed lot (LOT_FIXED)
+input double        InpRiskPercent      = 1.0;          // Risk % of equity (LOT_RISK_PCT)
+input double        InpMaxLot           = 2.0;          // Hard lot cap (reduced from 5: 5 lots/100k was ~3-5% risk/trade -> 96% DD)
 input int           InpMaxSpreadPoints  = 0;            // Max spread (points); 0=off (gold spreads are large!)
 
 input group "Letra37 EA - Small Account Mode (toggle)"
@@ -3699,30 +3698,10 @@ input double        InpMaxSLAtr         = 10.0;         // Safety cap on total S
 input bool          InpCompSizing       = true;         // Recursion-size-aware sizing: compression sets stop distance + partial timing (wide loop=wider stop, failure-swing=tighter)
 
 input group "Letra37 EA - Take Profit"
-//  Profit management: 5 partial levels, 20% each.
-//  TWO MODES:
-//  1) DOLLAR mode (InpProfitMode=false) -- fixed dollar amounts per level
-//  2) R-MULTIPLE mode (InpProfitMode=true) -- multiples of initial risk (RECOMMENDED)
-//     R-multiple mode scales automatically with lot size and account equity.
-//     Example: risk $400 -> L1=1R=$400, L2=2R=$800, L3=5R=$2000 etc.
-input bool          InpUseRMultiple    = false;        // TRUE = R-multiple mode (scales with risk), FALSE = fixed dollar amounts
-// Fixed dollar mode levels:
-input double        InpTPDollar1       = 900.0;        // Level 1 dollar profit -> 20% close + breakeven SL
-input double        InpTPDollarBE      = 900.0;        // Breakeven SL trigger (moves SL to entry when profit >= this)
-input double        InpTPDollarTrail   = 1200.0;       // Trailing stop trigger (activates trail when profit >= this)
-input double        InpTPDollar2       = 1600.0;       // Level 2 dollar profit -> 20% close
-input double        InpTPDollar3       = 3200.0;       // Level 3 dollar profit -> 20% close
-input double        InpTPDollar4       = 5500.0;       // Level 4 dollar profit -> 20% close
-input double        InpTPDollar5       = 7000.0;       // Level 5 dollar profit -> 20% close
-// R-multiple mode levels (multiples of initial risk):
-input double        InpTPR1            = 1.0;          // Level 1 R -> 20% close
-input double        InpTPRBE           = 1.0;          // Breakeven SL trigger (R)
-input double        InpTPRTrail        = 1.5;          // Trailing stop trigger (R)
-input double        InpTPR2            = 2.0;          // Level 2 R -> 20% close
-input double        InpTPR3            = 4.0;          // Level 3 R -> 20% close
-input double        InpTPR4            = 6.0;          // Level 4 R -> 20% close
-input double        InpTPR5            = 8.0;          // Level 5 R -> 20% close
-input double        InpTrailAtr        = 2.0;          // Trailing stop distance in ATR
+//  SPEC AUDIT: ALL take-profit logic REMOVED. Campaigns are NOT closed because a reward ratio
+//  was reached. The position lives until ownership transfers or the campaign's terminal sequence
+//  completes. The broker order has TP=0 (no server TP). Structure SL remains the only hard stop.
+//  (Retained as empty group for input-ordering backward compat; inputs deleted.)
 
 input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  SPEC AUDIT: break-even, trailing, partial, session-end, thesis-flip, phase-flip, opposite-
@@ -3732,7 +3711,7 @@ input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  against position. These are computed from live engine state each bar.
 input int           InpMinHoldBars      = 3;            // Min bars to hold before ANY campaign exit fires (protects against entry-bar reversal noise)
 input bool          InpExitOnOwnerTransfer = true;      // EXIT: close when curve OWNERSHIP has fully transferred away from the trade's campaign direction
-input double        InpOwnerTransferThresh = 45.0;      // Ownership transfer %: the opposing curve must dominate by at least this % to confirm transfer
+input double        InpOwnerTransferThresh = 65.0;      // Ownership transfer %: the opposing curve must dominate by at least this % to confirm transfer
 input bool          InpExitOnTermComplete  = true;      // EXIT: close when the terminal sequence of the campaign's S/D transition has completed (campaign naturally finished)
 input bool          InpExitOnP2CHOCH       = true;      // EXIT: close when a Phase-2 CHOCH prints against the position (internal structure proves campaign failure)
 input int           InpP2CHOCHConfirmBars  = 2;         // Bars of continued adverse structure to confirm a genuine P2 CHOCH (vs. wick noise)
@@ -3874,7 +3853,6 @@ double NormalizeLot(double lot)
    double maxlot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
    double step =SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
    if(step<=0) step=0.01;
-   if(minlot<=0) minlot=0.01;
    lot=MathFloor(lot/step)*step;
    if(lot<minlot) lot=minlot;
    if(lot>maxlot) lot=maxlot;
@@ -3888,24 +3866,19 @@ double MoneyPerPointPerLot()
    double tickVal=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
    double tickSize=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
    if(tickSize<=0) tickSize=_Point;
-   if(tickVal<=0) return(1.0);
-   return(tickVal*(_Point/fmax2(tickSize,1e-10)));
+   return(tickVal*(_Point/tickSize));
 }
 
 double CalcLot(const double entry,const double sl)
 {
-   // Fixed lot mode REMOVED -- risk-based only with hard caps
-   double riskPct=(InpSmallAccount? InpSmallAcctRiskPct : InpRiskPercent);
-   double equityRisk=gAccount.Equity()*riskPct/100.0;
-   // Hard cap 1: never risk more than InpMaxRiskDollars per trade
-   double riskMoney=fmin2(equityRisk, InpMaxRiskDollars);
+   if(InpLotMode==LOT_FIXED) return(NormalizeLot(InpFixedLot));
+   double riskPct=(InpSmallAccount? InpSmallAcctRiskPct : InpRiskPercent);   // small-account mode uses its own (lower) risk %
+   double riskMoney=gAccount.Equity()*riskPct/100.0;
    double slPts=MathAbs(entry-sl)/_Point;
    double mpp=MoneyPerPointPerLot();
-   if(slPts<1 || mpp<=0) return(NormalizeLot(0.01));
-   double lot=riskMoney/(slPts*fmax2(mpp,1e-10));
-   // Hard cap 2: 5 lot maximum (gold liquidity / slippage ceiling)
-   lot=fmin2(lot, 5.0);
-   return(NormalizeLot(lot));
+   if(slPts<1 || mpp<=0) return(NormalizeLot(InpFixedLot));
+   double lot=riskMoney/(slPts*mpp);
+   return(NormalizeLot(lot));                                 // NormalizeLot enforces broker min/step and the InpMaxLot cap
 }
 
 //--- ARC v2 apex builder (SYMPHONY port): uses the ARC inputs (declared in the EA section) and
@@ -4661,59 +4634,65 @@ void ManagePositions()
       double rMult =(dir==1?(mkt-openP):(openP-mkt))/risk;
 
       //==============================================================
-      // PROFIT MANAGEMENT -- 5 levels 20% each, configurable via inputs
-      // Mode: Dollar amounts OR R-multiples (InpUseRMultiple)
+      // PROFIT MANAGEMENT -- 5 levels, 20% each
+      // $900 -> 20% + breakeven SL
+      // $2300 -> 20%
+      // $4400 -> 20%
+      // $6400 -> 20%
+      // $8600 -> 20% + trailing stop
       //==============================================================
       double posProfit=PositionGetDouble(POSITION_PROFIT);
       double posLots=PositionGetDouble(POSITION_VOLUME);
       if(mi>=0 && posLots>0 && posProfit>0){
          double closeLots=NormalizeLot(posLots*0.20);  // 20% of current position
-         double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
-         if(closeLots<minLot) closeLots=minLot;
-         if(closeLots>=posLots) closeLots=NormalizeLot(posLots*0.5); // safety: never close 100%
+         if(closeLots<=0) closeLots=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
 
-         // Level 1 -- close 20% + move SL to breakeven
-         // ?? Thresholds (dollar or R-multiple) ??
-         double _tBE   = InpUseRMultiple ? risk*InpTPRBE    : InpTPDollarBE;
-         double _tTrl  = InpUseRMultiple ? risk*InpTPRTrail : InpTPDollarTrail;
-         double _t1    = InpUseRMultiple ? risk*InpTPR1     : InpTPDollar1;
-         double _t2    = InpUseRMultiple ? risk*InpTPR2     : InpTPDollar2;
-         double _t3    = InpUseRMultiple ? risk*InpTPR3     : InpTPDollar3;
-         double _t4    = InpUseRMultiple ? risk*InpTPR4     : InpTPDollar4;
-         double _t5    = InpUseRMultiple ? risk*InpTPR5     : InpTPDollar5;
-
-         // Breakeven SL -- independent trigger at $900
-         if(!gMgBEDone[mi] && posProfit>=_tBE){
-            gMgBEDone[mi]=true;
+         // Level 1 -- $900 profit: close 20% + move SL to breakeven
+         if(!gMgP1Done[mi] && posProfit>=900.0){
+            gMgP1Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L1 @$900 closed ",DoubleToString(closeLots,2)," lots profit=",DoubleToString(posProfit,2));
+            // Move SL to breakeven (open price + 1 point buffer)
             double beSL=(dir==1)?openP+_Point:openP-_Point;
             if((dir==1&&beSL>curSL)||(dir==-1&&beSL<curSL))
-               trade.PositionModify(tk,NormPrice(beSL),0.0);
-            if(InpDebugExits) Print("=== BE SL @profit=",DoubleToString(posProfit,0));
+               if(trade.PositionModify(tk,beSL,0.0))
+                  if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits));
          }
-         // Trailing activation -- independent trigger at $1200
-         if(!gMgTrailing[mi] && posProfit>=_tTrl){
+         // Level 2 -- $2300 profit: close 20%
+         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=2300.0){
+            gMgP2Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L2 @$2300 closed ",DoubleToString(closeLots,2)," lots");
+         }
+         // Level 3 -- $4400 profit: close 20%
+         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=4400.0){
+            gMgP3Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L3 @$4400 closed ",DoubleToString(closeLots,2)," lots");
+         }
+         // Level 4 -- $6400 profit: close 20%
+         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=6400.0){
+            gMgP4Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L4 @$6400 closed ",DoubleToString(closeLots,2)," lots");
+         }
+         // Level 5 -- $8600 profit: close 20% + activate trailing stop
+         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=8600.0){
+            gMgP5Done[mi]=true;
             gMgTrailing[mi]=true;
-            gMgTrailSL[mi]=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
-            if(InpDebugExits) Print("=== TRAIL ON @profit=",DoubleToString(posProfit,0));
+            gMgTrailSL[mi]=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L5 @$8600 closed ",DoubleToString(closeLots,2)," lots + trailing activated");
          }
-         // L1 $900 -- close 20%
-         if(!gMgP1Done[mi] && posProfit>=_t1){ gMgP1Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L2 $1600 -- close 20%
-         else if(gMgP1Done[mi]&&!gMgP2Done[mi]&&posProfit>=_t2){ gMgP2Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L3 $3200 -- close 20%
-         else if(gMgP2Done[mi]&&!gMgP3Done[mi]&&posProfit>=_t3){ gMgP3Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L4 $5500 -- close 20%
-         else if(gMgP3Done[mi]&&!gMgP4Done[mi]&&posProfit>=_t4){ gMgP4Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L5 $7000 -- close 20%
-         else if(gMgP4Done[mi]&&!gMgP5Done[mi]&&posProfit>=_t5){ gMgP5Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
 
-         // Trailing stop management -- moves only in favour, never reverses
-         if(gMgTrailing[mi]){
-            double newTrail=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
+         // Trailing stop management (active after level 5)
+         if(mi>=0 && gMgTrailing[mi]){
+            double newTrail=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
             bool improved=(dir==1&&newTrail>gMgTrailSL[mi])||(dir==-1&&newTrail<gMgTrailSL[mi]);
-            if(improved&&((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
+            if(improved && ((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
                gMgTrailSL[mi]=newTrail;
-               trade.PositionModify(tk,NormPrice(newTrail),0.0);
+               if(trade.PositionModify(tk,NormPrice(newTrail),0.0))
+                  if(InpDebugExits) Print("=== TRAIL SL moved to ",DoubleToString(newTrail,_Digits));
             }
          }
       }
