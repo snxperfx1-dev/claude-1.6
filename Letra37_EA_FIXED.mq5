@@ -42,7 +42,7 @@ enum ENUM_TXT_SIZE     { TS_TINY, TS_SMALL, TS_NORMAL };
 enum ENUM_PANEL_POS    { PP_TOP, PP_MIDDLE, PP_BOTTOM };
 
 //==================================================================
-// SECTION 1 — INPUTS (ported 1:1 from the Pine source)
+// SECTION 1 -- INPUTS (ported 1:1 from the Pine source)
 //==================================================================
 
 //--- Dashboard panel toggles -------------------------------------
@@ -410,7 +410,7 @@ ENUM_TIMEFRAMES SafeTF(const ENUM_TIMEFRAMES req)
 }
 
 //==================================================================
-// STRUCTURE ENGINE  (f_se) — full 18-output state machine per TF
+// STRUCTURE ENGINE  (f_se) -- full 18-output state machine per TF
 //==================================================================
 struct SEOut
 {
@@ -574,7 +574,7 @@ void ComputeSE(const ENUM_TIMEFRAMES tfReq, const int bars,
          if(phaseState==12 && ((dir==1&&bullCH)||(dir==-1&&bearCH))) phaseState=13;
       }
       //--- map v60 code -> Letra canonical code so Letra's combiner is unchanged ---
-      //  v60: 7 Transition Environment (was "Absorption" — SPEC: not a phase but a recursive
+      //  v60: 7 Transition Environment (was "Absorption" -- SPEC: not a phase but a recursive
       //  environment containing internal CHOCHs, compression, failure swings, dominance transfer),
       //  9 HTF Flip->Retr Pre-Cvx, 10 Induction->Retr Induction,
       //       11 Liquidation/12 Terminal->Retr Liquidity, 13/14 Return->Demand/Supply Return.
@@ -599,7 +599,7 @@ void ComputeSE(const ENUM_TIMEFRAMES tfReq, const int bars,
 
 
 //==================================================================
-// TIME MAPPING — project an HTF series onto a chart-bar time
+// TIME MAPPING -- project an HTF series onto a chart-bar time
 // Returns index of the latest HTF bar with open-time <= ct.
 //==================================================================
 int MapIdx(const datetime &times[], const int n, const datetime ct)
@@ -616,7 +616,7 @@ double MapVal(const datetime &times[], const double &vals[], const int n, const 
 }
 
 //==================================================================
-// PHYSICS ENGINE (f_phys) — fixed M5
+// PHYSICS ENGINE (f_phys) -- fixed M5
 //==================================================================
 struct PhysOut
 {
@@ -715,7 +715,7 @@ void ComputeBelief(const ENUM_TIMEFRAMES tfReq, const int bars, const int atrL,
 }
 
 //==================================================================
-// M1 PHYSICS ENGINE (f_m1Physics) — fixed "1"
+// M1 PHYSICS ENGINE (f_m1Physics) -- fixed "1"
 //==================================================================
 struct M1Out { datetime t[]; int n; int expWeak[],convEmer[],indEmer[],liqEmer[],absEmer[]; };
 
@@ -750,7 +750,7 @@ void ComputeM1(const int bars, const int atrL, const int effL, const double effT
 }
 
 //==================================================================
-// FU POOL ENGINE (f_fuPool) — multi-TF recursive FU left-pool magnets
+// FU POOL ENGINE (f_fuPool) -- multi-TF recursive FU left-pool magnets
 //==================================================================
 struct FUPoolOut { datetime t[]; int n; double pool[],mid[],bandHi[],bandLo[],tip[],score[]; int dir[],valid[]; };
 
@@ -787,7 +787,7 @@ void ComputeFUPool(const ENUM_TIMEFRAMES tfReq, const int bars, const double wic
 }
 
 //==================================================================
-// HTF DIR (f_htfDir) — V72 MCE single-direction read
+// HTF DIR (f_htfDir) -- V72 MCE single-direction read
 //==================================================================
 struct DirOut { datetime t[]; int n; int dir[]; };
 
@@ -1008,7 +1008,7 @@ double cur_entryProb=0.0;      // entry-cycle probability %
 double cur_distFlipAtr=0.0;    // distance to HTF flip/objective in ATR
 //--- MULTI-CURVE FLIP CONTEXT (stored for EA TryEnter access) ---
 double cur_ctxFlipTop=NA, cur_ctxFlipBot=NA, cur_ctxFlipMid=NA;
-//--- PER-TIMEFRAME CURVE CONTEXT (ported from V60 — origin→extreme→flip per curve) ---
+//--- PER-TIMEFRAME CURVE CONTEXT (ported from V60 -- origin->extreme->flip per curve) ---
 // Each curve on each TF has: origin (seN_inv), extreme (swing hi/lo), flip zone (seN_ft/fb)
 // Parallel arrays: [0]=M1, [1]=M3, [2]=M5, [3]=M15, [4]=H1, [5]=H4
 int    cur_cv_dir[6];
@@ -1126,7 +1126,7 @@ double SMAlastN(const double &arr[], const int n)
 int g_htfBias1=0,g_htfBias2=0;
 
 //==================================================================
-// PROCESS A SINGLE CHART BAR — full faithful pipeline
+// PROCESS A SINGLE CHART BAR -- full faithful pipeline
 //==================================================================
 void ProcessBar(const int i,const double &o[],const double &h[],const double &l[],
                 const double &c[],const datetime &tm[],const double &vol[],
@@ -1228,7 +1228,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    g_m1AbsorptionEmer =MapValI(m1o.t,m1o.absEmer,m1o.n,ct)!=0;
 
    //==============================================================
-   // SECTION 4 — MARKET STRUCTURE (chart TF)
+   // SECTION 4 -- MARKET STRUCTURE (chart TF)
    //==============================================================
    double structPivH=ChartPivotHigh(h,i,structLen);
    double structPivL=ChartPivotLow (l,i,structLen);
@@ -1258,7 +1258,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool structShortOK=(!requireStruct)||(useStrictStructure&&structBias==-1&&isLL)||(!useStrictStructure&&structBias==-1);
 
    //==============================================================
-   // SECTION 5 — PIVOT MEMORY (chart, pivotLen)
+   // SECTION 5 -- PIVOT MEMORY (chart, pivotLen)
    //==============================================================
    double pivH=swPivH, pivL=swPivL;
    double pivotEventPrice=NA; int pivotEventBar=-1,pivotEventDir=0;
@@ -1270,7 +1270,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    }
 
    //==============================================================
-   // SECTION 6 — IMPULSE
+   // SECTION 6 -- IMPULSE
    //==============================================================
    bool eliteShortImpulse=!naf(pivL)&&g_prevPivotDir==1 &&(g_prevPivotPrice-pivL)>atr*impulseAtrMult;
    bool eliteLongImpulse =!naf(pivH)&&g_prevPivotDir==-1&&(pivH-g_prevPivotPrice)>atr*impulseAtrMult;
@@ -1363,7 +1363,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
 
 
    //==============================================================
-   // SECTION 10 — LIQUIDITY HEATMAP
+   // SECTION 10 -- LIQUIDITY HEATMAP
    //==============================================================
    double _swH=nz(HighestN(h,i,liqSweepLookback),hi);
    double _swL=nz(LowestN (l,i,liqSweepLookback),lo);
@@ -1398,7 +1398,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool liqSweepOK=(!requireLiqSweep)||(direction==1&&(liqSweepBear||liqVacuum))||(direction==-1&&(liqSweepBull||liqVacuum));
 
    //==============================================================
-   // SECTION 11 — GEOMETRY
+   // SECTION 11 -- GEOMETRY
    //==============================================================
    int obAge=(g_obBirthBar>=0)?i-g_obBirthBar:0;
    bool obFresh=obAge<=obMaxBars;
@@ -1420,7 +1420,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double zonePrecision=!naf(flipzoneWidth)?fmax2(100.0-fmin2((flipzoneWidth/fmax2(atr*0.5,1e-10))*50.0,100.0),0.0):0.0;
 
    //==============================================================
-   // SECTION 12 — WAVE INTELLIGENCE
+   // SECTION 12 -- WAVE INTELLIGENCE
    //==============================================================
    double ref_effNorm =fmin2(efficiency,1.0);
    double ref_dispNorm=fmin2(displacement/fmax2(dispThresh*2.0,1e-10),1.0);
@@ -1457,7 +1457,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double convexityMaturity=g_convexityMaturity;
 
    //==============================================================
-   // ENGINE 1A — DISPLAY-PHASE AUTHORITY (liqg overlay)
+   // ENGINE 1A -- DISPLAY-PHASE AUTHORITY (liqg overlay)
    //==============================================================
    bool _liqgRetr=ie1a_currentPhase=="Retracement Induction";
    bool _liqgArm =ie1a_currentPhase=="Expansion Induction"||_liqgRetr;
@@ -1551,7 +1551,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double waveModelFit=g_waveModelFit;
 
    //==============================================================
-   // 12A — BELIEF ENGINE
+   // 12A -- BELIEF ENGINE
    //==============================================================
    g_preConvEvidence=bullMomDecay||bearMomDecay;
    g_inductionEvidence=(direction==1&&bearImpulse&&g_nearFlipzone)||(direction==-1&&bullImpulse&&g_nearFlipzone);
@@ -1584,7 +1584,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double absorptionBelief=g_absorptionBelief, retracementBelief=g_retracementBelief, demandReturnBelief=g_demandReturnBelief;
 
    //==============================================================
-   // 12B — PROXIMITY
+   // 12B -- PROXIMITY
    //==============================================================
    double expansionProximity=fmin2(sim_Expansion*0.50+(bullImpulse||bearImpulse?25.0:0.0)+(waveProgress<35.0?(35.0-waveProgress)*0.50:0.0)+(obs_ExpansionScore*0.25),100.0);
    double convexityProximity=fmin2(sim_PreConv*0.25+sim_Induction*0.25+sim_Liquidity*0.20+(g_preConvEvidence?15.0:0.0)+(waveProgress>=30.0&&waveProgress<=65.0?15.0:0.0),100.0);
@@ -1594,7 +1594,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double demandReturnProximity=fmin2(sim_DemandReturn*0.50+(!naf(g_flipTop)&&!naf(g_flipBot)&&cl<=g_flipTop&&cl>=g_flipBot?30.0:0.0)+(waveProgress>=90.0?20.0:0.0),100.0);
 
    //==============================================================
-   // 12D — HYPOTHESIS
+   // 12D -- HYPOTHESIS
    //==============================================================
    double _fitMult=fmax2(0.60,waveModelFit/100.0);
    double hyp_LateExpansion=(expansionBelief*0.35+(waveProgress<38.0?(38.0-waveProgress)*0.80:0.0)+(convexityMaturity<30?(30.0-convexityMaturity)*0.30:0.0)+sim_Expansion*0.20+(expansionBelief>55&&convexityBelief>30?10.0:0.0))*_fitMult;
@@ -1617,7 +1617,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
         primaryHypothesis=="RETRACEMENT"?hyp_RetracementActive_N:hyp_DemandReturn_N;
 
    //==============================================================
-   // 12E — PREDICTION
+   // 12E -- PREDICTION
    //==============================================================
    double predScore_Expansion=(waveProgress<35.0?(35.0-waveProgress)*1.00:0.0)+(expansionBelief>55?expansionBelief*0.30:0.0)+(convexityMaturity<25?20.0:0.0)+(posDistToCreation>30?15.0:0.0)+(htfAlign==direction&&direction!=0?15.0:0.0);
    double predScore_Convexity=(waveProgress>=25.0&&waveProgress<=60.0?30.0:0.0)+(convexityMaturity>20?convexityMaturity*0.30:0.0)+(obs_DecayScore>40?20.0:0.0)+(g_m1ConvexityEmer?15.0:0.0)+(g_preConvEvidence?15.0:0.0);
@@ -1635,7 +1635,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double expectedNextProb=_maxPredScore>0?fmin2(_maxPredScore/fmax2(_maxPredScore+30.0,1.0)*100.0,95.0):50.0;
 
    //==============================================================
-   // 12F — VALIDATION + 12G CONFIDENCE
+   // 12F -- VALIDATION + 12G CONFIDENCE
    //==============================================================
    bool predTransition=ie1a_currentPhase!=g_lastIE1APhase;
    bool predSucceeded=predTransition&&ie1a_currentPhase==g_lastExpectedPhase;
@@ -1660,7 +1660,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
 
 
    //==============================================================
-   // SECTION 13 — WAVE SPAWN ENGINE
+   // SECTION 13 -- WAVE SPAWN ENGINE
    //==============================================================
    g_recursiveJustFired=false;
    bool _allowSpawn=l0_dir!=0 && l0_dir!=g_direction;
@@ -1743,7 +1743,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool closeInside=g_closeInside;
 
    //==============================================================
-   // SECTION 14 — INDUCTION ZONE CLASSIFICATION
+   // SECTION 14 -- INDUCTION ZONE CLASSIFICATION
    //==============================================================
    bool inRetracementInducZone=!naf(pivL)&&!naf(g_inducZoneLow)&&!naf(g_inducZoneHigh)&&direction==1&&pivL>=g_inducZoneLow&&pivL<=g_inducZoneHigh&&retrInducBuyEv;
    bool inShortRetrInducZone=!naf(pivH)&&!naf(g_inducZoneLow)&&!naf(g_inducZoneHigh)&&direction==-1&&pivH>=g_inducZoneLow&&pivH<=g_inducZoneHigh&&retrInducSellEv;
@@ -1759,7 +1759,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double flipzoneScore=flipzoneStagesComplete/5.0*100.0;
 
    //==============================================================
-   // SECTION 15 — SCORING
+   // SECTION 15 -- SCORING
    //==============================================================
    double poiMid=(!naf(flipTop)&&!naf(flipBot))?(flipTop+flipBot)/2.0:NA;
    double energy=!naf(poiMid)?MathAbs(cl-poiMid)/fmax2(atr,1e-10):0.0;
@@ -1773,7 +1773,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    color gradeCol=grade=="A+"?(color)0x88FF00:grade=="A"?clrLime:grade=="B"?clrYellow:grade=="C"?clrOrange:clrRed;
 
    //==============================================================
-   // SECTION 16 — BAYESIAN
+   // SECTION 16 -- BAYESIAN
    //==============================================================
    double bayesStruct=structBias==liveWaveDir?0.90:structBias==0?0.50:0.15;
    double bayesMomentum=(liveWaveDir==1&&velocity>0&&acceleration>0)?0.85:(liveWaveDir==-1&&velocity<0&&acceleration<0)?0.85:((liveWaveDir==1&&velocity>0)||(liveWaveDir==-1&&velocity<0))?0.60:0.30;
@@ -1787,7 +1787,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double finalProb=1.0/(1.0+MathExp(-logOdds))*100.0;
 
    //==============================================================
-   // SECTION 17 — PROBABILITY PANELS
+   // SECTION 17 -- PROBABILITY PANELS
    //==============================================================
    double velDecay=phys_vd70?1.0:0.0;
    double expansionProbability=fmin2((!bullInvalid&&!bearInvalid?20.0:0.0)+(convexityComplete?20.0:convexityScore*0.4)+(recursiveComplete?15.0:flipzoneStagesComplete*3.0)+(liveHtfAlign==liveWaveDir&&liveHtfAlign!=0?25.0:liveHtfAlign==0?12.5:0.0)+(liqHeat>50?20.0:liqHeat*0.4),100.0);
@@ -1795,7 +1795,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double tradeReadiness=fmin2((liveWaveDir!=0?10.0:0.0)+(flipzoneStagesComplete>=3?15.0:flipzoneStagesComplete*5.0)+(velocityScore*0.10)+(expansionScore*0.10)+(liqHeat<50?10.0:liqHeat>70?-5.0:0.0)+(liveHtfAlign==liveWaveDir&&liveHtfAlign!=0?15.0:0.0)+(expansionProbability*0.20)+(bayesFlipzone*3.0),100.0);
 
    //==============================================================
-   // SECTION 18 — SLIPPAGE & TRADE OPPORTUNITY
+   // SECTION 18 -- SLIPPAGE & TRADE OPPORTUNITY
    //==============================================================
    double spreadEstimate=atr*0.05;
    double volatilityFactor=volRatio*0.10;
@@ -1824,7 +1824,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    string liveDirective=netEdgeAdjusted>25?"BUY PRESSURE":netEdgeAdjusted>10?"BULLISH BIAS":netEdgeAdjusted<-25?"SELL PRESSURE":netEdgeAdjusted<-10?"BEARISH BIAS":"NEUTRAL / WAIT";
 
    //==============================================================
-   // SECTION 19 — HTF ALIGNMENT GATE / SECTION 20 — EXEC LOCK
+   // SECTION 19 -- HTF ALIGNMENT GATE / SECTION 20 -- EXEC LOCK
    //==============================================================
    bool htfAligned=direction!=0&&(htfAlign==direction||htfAlign==0);
    int resonance=htfAligned?2:1;
@@ -1845,7 +1845,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool inducOK_short=(!requireInduction)||retracementInductionConf;
 
    //==============================================================
-   // SECTION 21 — ENTRY SIGNALS
+   // SECTION 21 -- ENTRY SIGNALS
    //==============================================================
    // --- INLINE ENTRY READINESS (runs every bar, not just isLast) ---
    // Map dominance transfer + recursion from key rungs for entry qualification
@@ -1861,15 +1861,15 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // The PERFECT sell has: H4 Bear, dom=100%, atFlip=Y, ALL TFs bearish, terminal DONE, FU=Y
    // We filter out garbage entries that don't have these characteristics.
 
-   // GATE 1: FLIP ZONE PROXIMITY — must be AT or INSIDE the flip zone (not random retracement)
+   // GATE 1: FLIP ZONE PROXIMITY -- must be AT or INSIDE the flip zone (not random retracement)
    bool _atFlipZone = g_nearFlipzone || g_closeInside;
 
-   // GATE 2: HIGH DOMINANCE — require M5 specifically >=75% (the execution timeframe)
+   // GATE 2: HIGH DOMINANCE -- require M5 specifically >=75% (the execution timeframe)
    // The bad buy had dom=56% on M5 but passed because H1 was high. M5 is what matters for execution.
    // Fallback: if M5 is 60%+ AND a higher rung is 75%+, also acceptable (anticipatory from HTF)
    bool _highDomM5plus = _inl_dom_m5>=75.0 || (_inl_dom_m5>=60.0 && (_inl_dom_m15>=75.0||_inl_dom_h1>=75.0));
 
-   // GATE 3: MULTI-TF ALIGNMENT — calibrated for BOTH scenarios:
+   // GATE 3: MULTI-TF ALIGNMENT -- calibrated for BOTH scenarios:
    //   A) Strong: 3+ of 6 TFs aligned (clear directional consensus)
    //   B) Anticipatory: 2+ TFs aligned + high dominance (transition completing, HTFs about to flip)
    // The good sell at H1 supply had: M1+M5 bearish (2) + dom=89% = anticipatory entry BEFORE H1/H4 flip
@@ -1879,14 +1879,14 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _multiTfLong  = (_tfAlignLong >= 3) || (_tfAlignLong >= 2 && _highDomM5plus);
    bool _multiTfShort = (_tfAlignShort >= 3) || (_tfAlignShort >= 2 && _highDomM5plus);
 
-   // GATE 4: TERMINAL SEQUENCE — must be in terminal phases or Return (not early expansion/retracement)
+   // GATE 4: TERMINAL SEQUENCE -- must be in terminal phases or Return (not early expansion/retracement)
    bool _anyRungInReturn = (_inl_ph_m1==12||_inl_ph_m1==13)||(_inl_ph_m3==12||_inl_ph_m3==13)||
         (_inl_ph_m5==12||_inl_ph_m5==13)||(_inl_ph_m15==12||_inl_ph_m15==13)||(_inl_ph_h1==12||_inl_ph_h1==13);
    bool _anyRungInTerminal = (_inl_ph_m1>=9&&_inl_ph_m1<=11)||(_inl_ph_m3>=9&&_inl_ph_m3<=11)||
         (_inl_ph_m5>=9&&_inl_ph_m5<=11)||(_inl_ph_m15>=9&&_inl_ph_m15<=11)||(_inl_ph_h1>=9&&_inl_ph_h1<=11);
    bool _terminalOrReturn = _anyRungInReturn || _anyRungInTerminal;
 
-   // GATE 5: FU OR STRUCTURAL CONFIRMATION — FU candle active OR strong structural evidence
+   // GATE 5: FU OR STRUCTURAL CONFIRMATION -- FU candle active OR strong structural evidence
    // Check FU blocks directly from global arrays (die_anyBullFUActive declared later in code)
    bool _fuConfirmLong=false, _fuConfirmShort=false;
    for(int _fq=ArraySize(g_fu_top)-1;_fq>=0;_fq--){
@@ -1900,7 +1900,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _confirmationLong  = _fuConfirmLong || _structConfirmLong;
    bool _confirmationShort = _fuConfirmShort || _structConfirmShort;
 
-   // GATE 6: MULTI-CURVE FLIP CONTEXT — the universal rule from spec:
+   // GATE 6: MULTI-CURVE FLIP CONTEXT -- the universal rule from spec:
    //   ALL curves have a flip zone. BUYS happen BELOW it. SELLS happen ABOVE it.
    //   Use the highest available TF flip zone as context authority (H4 > H1 > M15 > M5).
    //   This ensures the algo always knows WHERE it is relative to the key reversal point.
@@ -1928,7 +1928,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _flipCtxAllowShort = naf(_ctx_flipMid) || (cl >= _ctx_flipMid - atr*0.3);
    // Store for EA TryEnter() access
    cur_ctxFlipTop=_ctx_ft; cur_ctxFlipBot=_ctx_fb; cur_ctxFlipMid=_ctx_flipMid;
-   // --- POPULATE PER-TIMEFRAME CURVE CONTEXT (V60 port: origin→extreme→flip per curve) ---
+   // --- POPULATE PER-TIMEFRAME CURVE CONTEXT (V60 port: origin->extreme->flip per curve) ---
    // Each curve knows: where it was born, where its peak/trough is, and its flip zone.
    // This gives the algo full awareness of which curves it's working within.
    cur_cv_dir[0]=m1_dir; cur_cv_origin[0]=se1_inv;
@@ -1967,28 +1967,28 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    cur_cv_flipMid[5]=(!naf(cur_cv_flipTop[5])&&!naf(cur_cv_flipBot[5]))?(cur_cv_flipTop[5]+cur_cv_flipBot[5])/2.0:NA;
    cur_cv_wp[5]=nz(MapVal(se240.t,se240.wp,se240.n,ct)); cur_cv_dom[5]=nz(MapVal(se240.t,se240.dom,se240.n,ct)); cur_cv_comp[5]=nz(MapVal(se240.t,se240.comp,se240.n,ct)); cur_cv_phase[5]=(int)nz(se240_ph);
 
-   // ═══════════════════════════════════════════════════════
+   // ???????????????????????????????????????????????????????
    // GATE 7: UNIFIED OWNERSHIP DEATH ENGINE (4-signal convergence)
    // Replaces single-variable Gate 7. Old: _macroDom>50 alone (5-15 bar lag).
    // New: triangulate from 4 independent sources. Requires 2+ to agree.
    //
-   // SIGNAL 1 — SE engine dom (slow/structural):
+   // SIGNAL 1 -- SE engine dom (slow/structural):
    //   The SE recBrk counter crossed majority (>40%). Lagging but reliable.
    //   Threshold lowered to 40% (not 50%) because we require convergence,
    //   so we don't need this signal alone to be conclusive.
    //
-   // SIGNAL 2 — LTF structural reversal (fast/structural):
+   // SIGNAL 2 -- LTF structural reversal (fast/structural):
    //   2+ lower timeframes have reversed against the macro direction.
    //   M5 bearish + M1 bearish while H4 is bullish = visible structure reversed.
    //
-   // SIGNAL 3 — HOE opposing weight (composite/current):
+   // SIGNAL 3 -- HOE opposing weight (composite/current):
    //   30%+ of collective TF weight is now in the OPPOSITE direction.
    //   Computed from cur_cv_dir[] which is available in Section 21.
    //
-   // SIGNAL 4 — V60 curve life (composite/fast):
+   // SIGNAL 4 -- V60 curve life (composite/fast):
    //   ctx_life < InpCurveDeadBelow (default 32). Multiple inputs combined.
    //   When life is DEAD, the curve's energy, force and retrace all confirm death.
-   // ═══════════════════════════════════════════════════════
+   // ???????????????????????????????????????????????????????
    int _macroDir = (l4_dir!=0) ? l4_dir : (l2_dir!=0) ? l2_dir : fractalStackDir;
    double _macroDom = (l4_dir!=0) ? nz(MapVal(se240.t,se240.dom,se240.n,ct)) :
                       (l2_dir!=0) ? nz(MapVal(se60.t,se60.dom,se60.n,ct)) :
@@ -2009,7 +2009,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Signal 3: HOE opposing weight (quick calc from cur_cv_dir[], available here)
    int _oppDir = -_macroDir;
    double _oppWeight = 0.0, _totWeight = 0.0;
-   double _hoeWts[6] = {0.20, 0.35, 0.55, 0.70, 0.85, 1.0};
+   double _hoeWts[6]; _hoeWts[0]=0.20; _hoeWts[1]=0.35; _hoeWts[2]=0.55; _hoeWts[3]=0.70; _hoeWts[4]=0.85; _hoeWts[5]=1.0;
    for(int _qi=0;_qi<6;_qi++){
       _totWeight += _hoeWts[_qi];
       if(cur_cv_dir[_qi]==_oppDir) _oppWeight += _hoeWts[_qi];
@@ -2032,7 +2032,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _allowLong  = (_macroDir==1)  || (_macroDir==0) || _anticipatoryLong  || _ownerDeadForLong;
    bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || _ownerDeadForShort;
 
-   // COMBINED ENTRY READINESS — v12 AUDIT FIX
+   // COMBINED ENTRY READINESS -- v12 AUDIT FIX
    // DEAD variables wired: _eceEntryConf, cur_curveBudget, cur_recDepth all now contribute.
    // Uses SE-available data (computed before isLast):
    double _se5DomNow = nz(MapVal(se5.t,se5.dom,se5.n,ct));
@@ -2049,12 +2049,12 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _ownerDeathConfirmed = cur_ownerDeathSignals >= 2;
    bool _entryReadyGate = _highDomM5plus && (_terminalOrReturn || _ownerDeathConfirmed) && (_execConfProxy + _budgetBonus + _recBonus >= 30.0);
 
-   // v12: entry driven by engines only — no phase belief scores
+   // v12: entry driven by engines only -- no phase belief scores
    bool beliefEntryLong=_allowLong&&direction==1&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong;
    bool beliefEntryShort=_allowShort&&direction==-1&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort;
    // When ownership death confirmed, bypass ERF gate (the ownership signal IS the readiness confirmation)
    bool _erfBypass = _ownerDeathConfirmed && (cur_ownerDeathSignals >= 3 || _ds4_lifeDead);
-   // ENTRY SIGNALS — ownership death + curve context only, no ERF/DOE/grade/opp blocking
+   // ENTRY SIGNALS -- ownership death + curve context only, no ERF/DOE/grade/opp blocking
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&obFresh;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&obFresh;
 
@@ -2062,7 +2062,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // After a flip zone trade confirms the thesis, HUNT for additional entries at demand/supply.
    // These are EASIER entries: thesis already confirmed, just buying pullbacks to demand zone.
    //
-   // Activation: when a Layer 1 signal fires → enable hunt mode in that direction
+   // Activation: when a Layer 1 signal fires -> enable hunt mode in that direction
    // Hunt zone for longs: at/below g_flipBot (the demand zone below the flip zone)
    // Hunt zone for shorts: at/above g_flipTop (the supply zone above the flip zone)
    // Deactivation: direction flip, invalidation, or wave reset
@@ -2101,17 +2101,17 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    gBarLong=longSignal; gBarShort=shortSignal; gBarLongPx=lo-atr*0.7; gBarShortPx=hi+atr*0.7;
 
    //==============================================================
-   // SECTION 24 — TRADE STATE
+   // SECTION 24 -- TRADE STATE
    //==============================================================
-   // ═══════════════════════════════════════════════════════════════════
-   // RECURSIVE CURVE OWNERSHIP ARCHITECTURE — Specification v9
+   // ???????????????????????????????????????????????????????????????????
+   // RECURSIVE CURVE OWNERSHIP ARCHITECTURE -- Specification v9
    // 7 probabilistic engines. No binary states. Continuous maturity.
    // "Who owns price, how mature is the curve, how much geometry remains?"
-   // ═══════════════════════════════════════════════════════════════════
+   // ???????????????????????????????????????????????????????????????????
 
-   // ─── ENGINE 1: HIERARCHICAL OWNERSHIP (HOE) ──────────────────────
+   // ??? ENGINE 1: HIERARCHICAL OWNERSHIP (HOE) ??????????????????????
    // Ownership is DISTRIBUTED across all TFs. Not one winner.
-   // Each TF has a % of ownership based on phase×dominance×progress×hierarchy.
+   // Each TF has a % of ownership based on phase?dominance?progress?hierarchy.
    double _hoePct[6]; double _hoeTotal=0;
    for(int _oi=0;_oi<6;_oi++){
       int _ph=cur_cv_phase[_oi]; int _d=cur_cv_dir[_oi];
@@ -2131,15 +2131,15 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double _hoeWP  = _hoeOwnerIdx>=0 ? cur_cv_wp[_hoeOwnerIdx] : 0;
    double _hoeComp= _hoeOwnerIdx>=0 ? cur_cv_comp[_hoeOwnerIdx] : 0;
 
-   // ─── ENGINE 2: OWNERSHIP TRANSFER (OTE) ──────────────────────────
+   // ??? ENGINE 2: OWNERSHIP TRANSFER (OTE) ??????????????????????????
    // Continuous transfer: old vs new. Not binary.
    double _oteOldPct = fmax2(0.0, 100.0-_hoeDom);
    double _oteNewPct = _hoeDom;
    // Transfer maturity: 0-100% (how complete is the handover)
    double _oteMaturity = _oteNewPct;  // 0=stable old, 50=contested, 100=complete transfer
 
-   // ─── ENGINE 3: GEOMETRY ENGINE (GE) ──────────────────────────────
-   // Estimates available curvature — not just distance.
+   // ??? ENGINE 3: GEOMETRY ENGINE (GE) ??????????????????????????????
+   // Estimates available curvature -- not just distance.
    // How much curve is physically possible before impact?
    double _geDistTarget=NA;
    // Distance to owner's destination
@@ -2168,7 +2168,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Small capacity = compressed or close = failure swing + immediate entry
    double _geCapacity = fmin2(100.0, _geDistTarget*15.0 * (1.0-_hoeComp/200.0) / fmax2(_geConvexWidth, 0.4));
 
-   // ─── ENGINE 4: RECURSIVE FORECAST (RFE) — PREDICTIVE ────────────
+   // ??? ENGINE 4: RECURSIVE FORECAST (RFE) -- PREDICTIVE ????????????
    // Forecasts future loops from GEOMETRY (not thresholds).
    // Inputs: distance + compression + velocity + convexity + curvature
    // Outputs: expectedLoops, failureSwingProb, immediateExecProb
@@ -2177,10 +2177,10 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double _rfeLargeProb = fmin2(100.0, fmax2(0.0, _geCapacity*0.5 * (1.0-_hoeComp/100.0) * (1.0-_geApproachSpeed/200.0)));
    // Failure swing: high compression + small distance + fast approach + high curvature
    double _rfeFailSwingProb = fmin2(100.0, fmax2(0.0,
-      _hoeComp*0.35 +                                    // high compression → failure swing
-      (100.0-_geCapacity)*0.25 +                          // small remaining space → failure swing
-      _geApproachSpeed*0.20 +                             // fast approach → failure swing
-      fmin2(30.0, MathAbs(convSmooth)/fmax2(atr*convMult,1e-10)*10.0))); // high curvature → failure swing
+      _hoeComp*0.35 +                                    // high compression -> failure swing
+      (100.0-_geCapacity)*0.25 +                          // small remaining space -> failure swing
+      _geApproachSpeed*0.20 +                             // fast approach -> failure swing
+      fmin2(30.0, MathAbs(convSmooth)/fmax2(atr*convMult,1e-10)*10.0))); // high curvature -> failure swing
    // Immediate execution: when all geometry says "no room for more loops"
    double _rfeImmediateProb = fmin2(100.0, fmax2(0.0,
       _rfeFailSwingProb*0.40 +                            // failure swing likely = entry close
@@ -2194,7 +2194,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
       (100.0-_hoeDom)*0.30 +                              // low dominance = losing control
       (_geApproachSpeed<20?20.0:0.0)));                    // velocity dying
 
-   // ─── CURVE EXHAUSTION ENGINE (CEE) ───────────────────────────────
+   // ??? CURVE EXHAUSTION ENGINE (CEE) ???????????????????????????????
    // Transitions finish because curves exhaust, not because phases end.
    // Transfer completes when newCurveEnergy > oldCurveEnergy AND old exhausted.
    double _ceeOldEnergy = fmax2(0.0, 100.0 - _oteMaturity);  // old curve's remaining energy
@@ -2202,7 +2202,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double _ceeExhaustProgress = fmin2(100.0, _hoeWP*0.5 + (100.0-_ceeOldEnergy)*0.3 + _rfeExhaustProb*0.2);
    bool   _ceeTransferComplete = _ceeNewEnergy > _ceeOldEnergy && _ceeExhaustProgress >= 60.0;
 
-   // ─── ENGINE 5: CURVE MATURITY (CME) ──────────────────────────────
+   // ??? ENGINE 5: CURVE MATURITY (CME) ??????????????????????????????
    // Everything is probabilistic. No binary EntryActive.
    // Maturity of the current lifecycle position.
    double _cmeExpansionPct = fmin2(100.0, _hoeWP<40 ? _hoeWP*2.5 : 0.0);
@@ -2226,12 +2226,12 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
                         _cmeEntryProb>=35 ? 2 :   // PREPARING
                         _cmeEntryProb>=15 ? 1 : 0; // BUILDING / TOO_EARLY
 
-   // ─── ENGINE 6: OWNER-DRIVEN DESTINATION (ODDE) + TARGET EXTENSION ─
+   // ??? ENGINE 6: OWNER-DRIVEN DESTINATION (ODDE) + TARGET EXTENSION ?
    // Target = OWNER's demand/supply. NOT entry TF.
-   // Escalates on ownership change: H4→D1→W1 (target extends automatically).
+   // Escalates on ownership change: H4->D1->W1 (target extends automatically).
    double _ddeTarget=NA; int _ddeTargetTF=-1;
    if(_hoeDir==-1){
-      // Bearish owner → destination = demand below (bullish curve's flip below price)
+      // Bearish owner -> destination = demand below (bullish curve's flip below price)
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
             _ddeTarget=cur_cv_flipTop[_ti]; _ddeTargetTF=_ti; break;
@@ -2251,7 +2251,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
          }
       }
    } else if(_hoeDir==1){
-      // Bullish owner → destination = supply above (bearish curve's flip above price)
+      // Bullish owner -> destination = supply above (bearish curve's flip above price)
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
             _ddeTarget=cur_cv_flipBot[_ti]; _ddeTargetTF=_ti; break;
@@ -2272,7 +2272,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // TARGET EXTENSION: if current target TF < owner TF, the target should be on the owner's level
    // This ensures H1 entry targeting H4 demand (not H1 demand)
    if(_ddeTargetTF>=0 && _hoeOwnerIdx>=0 && _ddeTargetTF<_hoeOwnerIdx){
-      // Target is on a lower TF than the owner — try to extend to owner's level
+      // Target is on a lower TF than the owner -- try to extend to owner's level
       if(_hoeDir==-1){
          double _owDest=cur_cv_origin[_hoeOwnerIdx];
          if(!naf(_owDest)&&_owDest<cl) _ddeTarget=_owDest;
@@ -2282,9 +2282,9 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
       }
    }
 
-   // ─── ENGINE 7: EXECUTION PROBABILITY (EPE) — CONTINUOUS ─────────
+   // ??? ENGINE 7: EXECUTION PROBABILITY (EPE) -- CONTINUOUS ?????????
    // Entry fires when probability is high enough. Not binary.
-   // entryProb = ownership × maturity × geometry × destination × recursion
+   // entryProb = ownership ? maturity ? geometry ? destination ? recursion
    double _eceOwnership = _hoeOwnerPct;
    double _eceMaturity = _cmeEntryProb;
    double _eceGeometry = fmin2(100.0, 100.0-_geCapacity);  // low capacity = close to execution
@@ -2302,7 +2302,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // WIRE: store execution confidence as global so it reaches entry gates and display
    cur_entryProb = fmin2(100.0, fmax2(cur_entryProb, _eceEntryConf));  // upgrade if ECE is higher
 
-   // ─── EXIT ENGINE ─────────────────────────────────────────────────
+   // ??? EXIT ENGINE ?????????????????????????????????????????????????
    // Never exit because entryTF target hit.
    // Exit when: destination reached OR ownership transfers OR curve exhausts.
    bool _destReached = !naf(_ddeTarget) && (g_tradeDir==1 ? cl>=_ddeTarget-atr*0.3 : g_tradeDir==-1 ? cl<=_ddeTarget+atr*0.3 : false);
@@ -2314,7 +2314,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
         (g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||
         (g_tradeDir!=0&&_domLost);
 
-   // Hunt mode: on destination reached → hunt at the reached zone
+   // Hunt mode: on destination reached -> hunt at the reached zone
    if(_destReached && g_tradeDir==1 && g_huntMode!=-1){
       g_huntMode=-1; g_huntActivatedBar=i;
       g_huntDemandLo=nz(_ddeTarget,cl); g_huntDemandHi=g_huntDemandLo+atr*3.0;
@@ -2333,7 +2333,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
 
 
    //==============================================================
-   // DIE-2 — FU ORDER BLOCK DETECTION + LIFECYCLE
+   // DIE-2 -- FU ORDER BLOCK DETECTION + LIFECYCLE
    //==============================================================
    double fuRange=hi-lo, fuBody=MathAbs(cl-op), fuUpperWick=hi-fmax2(op,cl), fuLowerWick=fmin2(op,cl)-lo;
    double pO=(i>0)?o[i-1]:op, pH1=(i>0)?h[i-1]:hi, pL1=(i>0)?l[i-1]:lo, pC=(i>0)?c[i-1]:cl;
@@ -2376,7 +2376,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double fuw_futureMagnet=g_fuw_valid?g_fuw_leftPool:NA;
 
    //==============================================================
-   // 1A.9 — MULTI-TF FU POOL MAGNETS
+   // 1A.9 -- MULTI-TF FU POOL MAGNETS
    //==============================================================
    int w_fuValid=MapValI(fpW.t,fpW.valid,fpW.n,ct),   d_fuValid=MapValI(fpD.t,fpD.valid,fpD.n,ct);
    int h4_fuValid=MapValI(fpH4.t,fpH4.valid,fpH4.n,ct),h1_fuValid=MapValI(fpH1.t,fpH1.valid,fpH1.n,ct);
@@ -2398,7 +2398,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    else if(g_fuw_valid&&!naf(fuw_futureMagnet)){ fu_winTarget=fuw_futureMagnet; fu_winSrc="FU Left Pool"; fu_winBand=g_fuw_mid; }
 
    //==============================================================
-   // 1A.9B — AFE (Alternating Flip Echo)
+   // 1A.9B -- AFE (Alternating Flip Echo)
    //==============================================================
    if(g_fuw_valid&&(naf(g_afe_origin)||g_fuw_tip!=g_afe_origin)){
       g_afe_origin=g_fuw_tip; g_afe_originDir=g_fuw_dir; g_afe_upperFlip=g_fuw_mid;
@@ -2414,7 +2414,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    }
 
    //==============================================================
-   // 1A.10 — FU CONVERSATION (parent FU being sought)
+   // 1A.10 -- FU CONVERSATION (parent FU being sought)
    //==============================================================
    int conv_bias=displayWaveDir_M5!=0?displayWaveDir_M5:fractalStackDir;
    double conv_seekPx=NA,conv_seekSc=0.0; string conv_seekTf="-";
@@ -2429,14 +2429,14 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double conv_confidence=(conv_bias==0||naf(conv_seekPx))?0.0:fmin2(100.0,conv_seekSc*0.7+fu_recursiveAlign*0.3);
 
    //==============================================================
-   // DIE-3/4 — ENTRY SCORE + CONFLUENCE
+   // DIE-3/4 -- ENTRY SCORE + CONFLUENCE
    //==============================================================
    double die_entryScore=fmin2((nz(waveModelFit,50.0)*0.20)+(nz(modelConfidence,50.0)*0.20)+(htfAlign==direction&&direction!=0?20.0:htfAlign==0?10.0:0.0)+(nz(liqHeat,0.0)>50?15.0:nz(liqHeat,0.0)*0.30)+((die_anyBullFUActive&&direction==1)||(die_anyBearFUActive&&direction==-1)?15.0:0.0)+(flipzoneStagesComplete>=3?10.0:flipzoneStagesComplete*3.3),100.0);
    bool die_entryFUConfluence=((longSignal&&die_anyBullFUActive)||(shortSignal&&die_anyBearFUActive));
    string die_fuContrib=die_entryFUConfluence?"FU CONFIRMED":(((direction==1&&die_anyBullFUActive&&!longSignal)||(direction==-1&&die_anyBearFUActive&&!shortSignal))?"FU ASSISTED":"FU NOT PRESENT");
 
    //==============================================================
-   // DASHBOARD INTEL — dominance / fusion / cycles / geometry
+   // DASHBOARD INTEL -- dominance / fusion / cycles / geometry
    //==============================================================
    double _l1_expStrength=expScr_tf1, _l2_expStrength=expScr_tf2;
    string l1_dominantPhase=f_famSimple(f_phaseFamilyCode((int)nz(se15_ph)));
@@ -2469,7 +2469,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
 
 
    //==============================================================
-   // SECTION 17/19 — FUTURE RETURN ZONE ENGINE
+   // SECTION 17/19 -- FUTURE RETURN ZONE ENGINE
    //==============================================================
    string frz_ownerLayer=dominantWaveLevel;
    bool frz_hasFU_gc=isBullFU_prev||isBearFU_prev;
@@ -2709,7 +2709,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
             _owTransMat = fmin2(90.0, _owTransMat+20.0);
          // State from maturity (ownership-driven, not phase-driven)
          // UNIFIED DEATH OVERRIDE: if Gate 7 already determined 2+ death signals,
-         // cur_transState must reflect that — no more BUILDING when curves are dying.
+         // cur_transState must reflect that -- no more BUILDING when curves are dying.
          if(cur_ownerDeathSignals >= 3)                         cur_transState="TRANSITION TERMINAL";
          else if(cur_ownerDeathSignals >= 2 || _owTransMat>=60.0 || (_owDomNow<30.0 && _ltfAgainstOwner>=2)) cur_transState="TRANSITION LATE";
          else if(_owTransMat>=35.0 || (_owDomNow<45.0 && _ltfAgainstOwner>=1)) cur_transState="TRANSITION MID";
@@ -2737,7 +2737,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
                cur_mtfEntryDom=_dm[_r];
             }
          }
-         //--- entry readiness: AUDIT FIX — display now matches execution (cur_entryProb gates both) ---
+         //--- entry readiness: AUDIT FIX -- display now matches execution (cur_entryProb gates both) ---
          // _entryReadyGate uses (_execConfProxy + _budgetBonus + _recBonus >= 40%) + dom + terminal.
          // cur_entryReady mirrors that using cur_entryProb (which was upgraded by ECE in the v9 block).
          bool _erd_domOK = nz(MapVal(se5.t,se5.dom,se5.n,ct))>=50.0 || nz(MapVal(se15.t,se15.dom,se15.n,ct))>=75.0;
@@ -3029,7 +3029,7 @@ void BuildHTFEngines()
 
 
 //==================================================================
-// UNIFIED DRIVER — reprocess a window and set cur_* / gBar* outputs
+// UNIFIED DRIVER -- reprocess a window and set cur_* / gBar* outputs
 // Caller should ResetState() first for a clean full recompute.
 //==================================================================
 void EngineRun(const int n,const datetime &time[],const double &open[],const double &high[],
@@ -3106,7 +3106,7 @@ string SenTfLabel(const ENUM_TIMEFRAMES tf)
 }
 
 //==================================================================
-// V60 STRUCTURE ENGINE — 14-phase, DIR-FIX, compression/recursion
+// V60 STRUCTURE ENGINE -- 14-phase, DIR-FIX, compression/recursion
 //==================================================================
 struct SEV60
 {
@@ -3287,7 +3287,7 @@ FUPoolOut sfpMN,sfpW,sfpD,sfpH4,sfpH1,sfpM15,sfpM5;
 double sn_px[],sn_mid[],sn_sc[]; int sn_dir[],sn_wt[],sn_state[],sn_bar[],sn_rev[];
 double sn_pv[7];                       // last pushed tip per TF (MN,W,D,H4,H1,M15,M5)
 
-//--- v60 FEATURE outputs (last closed bar) — NO decision layer ---
+//--- v60 FEATURE outputs (last closed bar) -- NO decision layer ---
 int    ctx_waveDir=0, ctx_stackDir=0, ctx_netBias=0, ctx_pdir=0, ctx_timeDir=0;
 double ctx_stackPct=0, ctx_pressure=0, ctx_residual=0, ctx_attractorScore=0, ctx_timeAlign=0, ctx_timeConflict=0;
 int    ctx_resCode=0, ctx_eligN=0;
@@ -3325,7 +3325,7 @@ double ctx_cExtreme=NA;           // raw current leg extreme (published by Conte
 //--- persistent terminal-counter state (updated once per bar) ---
 bool   g_termActive=false; int g_termShifts=0; int g_termPrevDirM5=0;
 //--- TIE detail ---
-string ctx_h1Timing="—"; double ctx_wp=0, ctx_atr=0;
+string ctx_h1Timing="--"; double ctx_wp=0, ctx_atr=0;
 
 double f_authSen(const int i){ return(sn_sc[i]+sn_wt[i]*4.0+sn_rev[i]*3.0); }
 void SnPush(const double px,const double mid,const int dir,const double sc,const int wt,const int barI)
@@ -3348,7 +3348,7 @@ void CycleRead(const ENUM_TIMEFRAMES tf,double &o,double &h,double &l,double &ph
 }
 
 //==================================================================
-// SENSEEI DRIVER — full recompute -> sets ctx_* for last closed bar
+// SENSEEI DRIVER -- full recompute -> sets ctx_* for last closed bar
 //==================================================================
 void ContextRun(const int bars)
 {
@@ -3550,7 +3550,7 @@ void ContextRun(const int bars)
    //--- FU extreme entry node:  (a) a node that just VALIDATED on the last closed bar
    //--- (the indicator printing a fresh circle at the extreme), OR
    //--- (b) price RETURNING to / TAPPING a recent, valid, high-authority node
-   //--- (the indicator's circle being revisited — enter AT that extreme). ---
+   //--- (the indicator's circle being revisited -- enter AT that extreme). ---
    bool fuFresh=false; int fuDir=0; double fuTip=NA, fuMid=NA; double fuAuth=-1.0;
    double fuHi=d.h[last], fuLo=d.l[last]; double fuTap=atrL*sIn_tapAtr;
    for(int fi=0;fi<ArraySize(sn_px);fi++){
@@ -3579,7 +3579,7 @@ void ContextRun(const int bars)
    ctx_distFlipAtr = (!naf(_distMag)&&atrL>0)?_distMag/atrL : 5.0;
    ctx_atFlip   = _inFez || (!naf(_distMag) && _distMag<=atrL*1.0);
    ctx_campaign = ctx_atFlip ? "TERMINAL (at flip)" : "EXPANSION (building)";
-   //  Principle 9 — FU camp merge: a fresh FU node that sits at the SAME flip zone as
+   //  Principle 9 -- FU camp merge: a fresh FU node that sits at the SAME flip zone as
    //  the network attractor means the recursive curve respected the parent FU, so the
    //  campaign merged back into the parent (not a genuinely new camp).
    ctx_fuMerged = (ctx_fuFresh && !naf(ctx_fuTip) && !naf(_flipMag) && atrL>0 && MathAbs(ctx_fuTip-_flipMag)<=atrL*0.75);
@@ -3606,7 +3606,7 @@ void ContextRun(const int bars)
    bool _htfOwner=(cur_curveOwner=="H1"||cur_curveOwner=="H4"||cur_curveOwner=="M15");
    ctx_termComplete=(ctx_atFlip && (g_termShifts>=_expShifts || (_htfOwner && ctx_termM1Cycles>=2*_expShifts)));
 
-   //  Part 3 — manipulation band vs true induction. The 0.618/0.70/0.786 fib band of the
+   //  Part 3 -- manipulation band vs true induction. The 0.618/0.70/0.786 fib band of the
    //  owner leg is where participants manipulate (displacement, NOT the entry). True induction
    //  happens at the LOWEST flip (deepest demand / highest supply = true S/D). Entries align
    //  to the true flip, not the manipulation wicks.
@@ -3701,32 +3701,32 @@ input bool          InpCompSizing       = true;         // Recursion-size-aware 
 input group "Letra37 EA - Take Profit"
 //  Profit management: 5 partial levels, 20% each.
 //  TWO MODES:
-//  1) DOLLAR mode (InpProfitMode=false) — fixed dollar amounts per level
-//  2) R-MULTIPLE mode (InpProfitMode=true) — multiples of initial risk (RECOMMENDED)
+//  1) DOLLAR mode (InpProfitMode=false) -- fixed dollar amounts per level
+//  2) R-MULTIPLE mode (InpProfitMode=true) -- multiples of initial risk (RECOMMENDED)
 //     R-multiple mode scales automatically with lot size and account equity.
-//     Example: risk $400 → L1=1R=$400, L2=2R=$800, L3=5R=$2000 etc.
+//     Example: risk $400 -> L1=1R=$400, L2=2R=$800, L3=5R=$2000 etc.
 input bool          InpUseRMultiple    = false;        // TRUE = R-multiple mode (scales with risk), FALSE = fixed dollar amounts
 // Fixed dollar mode levels:
-input double        InpTPDollar1       = 900.0;        // Level 1 dollar profit → 20% close + breakeven SL
+input double        InpTPDollar1       = 900.0;        // Level 1 dollar profit -> 20% close + breakeven SL
 input double        InpTPDollarBE      = 900.0;        // Breakeven SL trigger (moves SL to entry when profit >= this)
 input double        InpTPDollarTrail   = 1200.0;       // Trailing stop trigger (activates trail when profit >= this)
-input double        InpTPDollar2       = 1600.0;       // Level 2 dollar profit → 20% close
-input double        InpTPDollar3       = 3200.0;       // Level 3 dollar profit → 20% close
-input double        InpTPDollar4       = 5500.0;       // Level 4 dollar profit → 20% close
-input double        InpTPDollar5       = 7000.0;       // Level 5 dollar profit → 20% close
+input double        InpTPDollar2       = 1600.0;       // Level 2 dollar profit -> 20% close
+input double        InpTPDollar3       = 3200.0;       // Level 3 dollar profit -> 20% close
+input double        InpTPDollar4       = 5500.0;       // Level 4 dollar profit -> 20% close
+input double        InpTPDollar5       = 7000.0;       // Level 5 dollar profit -> 20% close
 // R-multiple mode levels (multiples of initial risk):
-input double        InpTPR1            = 1.0;          // Level 1 R → 20% close
+input double        InpTPR1            = 1.0;          // Level 1 R -> 20% close
 input double        InpTPRBE           = 1.0;          // Breakeven SL trigger (R)
 input double        InpTPRTrail        = 1.5;          // Trailing stop trigger (R)
-input double        InpTPR2            = 2.0;          // Level 2 R → 20% close
-input double        InpTPR3            = 4.0;          // Level 3 R → 20% close
-input double        InpTPR4            = 6.0;          // Level 4 R → 20% close
-input double        InpTPR5            = 8.0;          // Level 5 R → 20% close
+input double        InpTPR2            = 2.0;          // Level 2 R -> 20% close
+input double        InpTPR3            = 4.0;          // Level 3 R -> 20% close
+input double        InpTPR4            = 6.0;          // Level 4 R -> 20% close
+input double        InpTPR5            = 8.0;          // Level 5 R -> 20% close
 input double        InpTrailAtr        = 2.0;          // Trailing stop distance in ATR
 
 input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  SPEC AUDIT: break-even, trailing, partial, session-end, thesis-flip, phase-flip, opposite-
-//  signal, life-score, narrative — ALL removed. Recursive waves naturally contain pullbacks,
+//  signal, life-score, narrative -- ALL removed. Recursive waves naturally contain pullbacks,
 //  internal liquidation, and ownership oscillation that are NORMAL, not exit signals.
 //  EXIT ONLY on (1) ownership transfer, (2) terminal sequence completion, (3) Phase-2 CHOCH
 //  against position. These are computed from live engine state each bar.
@@ -3738,13 +3738,13 @@ input bool          InpExitOnP2CHOCH       = true;      // EXIT: close when a Ph
 input int           InpP2CHOCHConfirmBars  = 2;         // Bars of continued adverse structure to confirm a genuine P2 CHOCH (vs. wick noise)
 
 input group "Letra37 EA - Session / Guards"
-input bool          InpUseSession       = false;        // Restrict NEW ENTRY hours (server time) — does NOT close existing campaigns
+input bool          InpUseSession       = false;        // Restrict NEW ENTRY hours (server time) -- does NOT close existing campaigns
 input int           InpSessStartHour    = 7;            // Session start hour
 input int           InpSessEndHour      = 20;           // Session end hour
 input bool          InpSkipFriday       = false;        // No new trades on Friday
 //  SPEC AUDIT: InpCloseAtSessEnd REMOVED (session exit artificially terminates campaigns).
 //  SPEC AUDIT: InpMaxDailyLossPct REMOVED (daily risk closure is an external constraint, not curve logic).
-input int           InpMaxTradesPerDay  = 20;           // Max new trades per day (0=off) — limits ENTRIES, not exits
+input int           InpMaxTradesPerDay  = 20;           // Max new trades per day (0=off) -- limits ENTRIES, not exits
 
 input group "Letra37 EA - Misc"
 input ulong         InpMagic            = 370037;       // Magic number
@@ -3836,13 +3836,13 @@ bool     gMktClosed     = false; // set when a management/flip order is rejected
 datetime eaT[]; double eaO[],eaH[],eaL[],eaC[],eaVol[];
 
 //--- per-ticket management memory ---
-// 5 partial-close levels (dollars profit): 900, 2300, 4400, 6400, 8600 → 20% each
+// 5 partial-close levels (dollars profit): 900, 2300, 4400, 6400, 8600 -> 20% each
 ulong  gMgTicket[]; double gMgInitSL[]; double gMgTP1[]; bool gMgPartialDone[]; bool gMgBEDone[]; int gMgDir[];
-bool   gMgP1Done[];  // $900  — 20% close + move SL to breakeven
-bool   gMgP2Done[];  // $2300 — 20% close
-bool   gMgP3Done[];  // $4400 — 20% close
-bool   gMgP4Done[];  // $6400 — 20% close
-bool   gMgP5Done[];  // $8600 — 20% close + activate trailing stop
+bool   gMgP1Done[];  // $900  -- 20% close + move SL to breakeven
+bool   gMgP2Done[];  // $2300 -- 20% close
+bool   gMgP3Done[];  // $4400 -- 20% close
+bool   gMgP4Done[];  // $6400 -- 20% close
+bool   gMgP5Done[];  // $8600 -- 20% close + activate trailing stop
 bool   gMgTrailing[];// trailing stop active (after $8600 hit)
 double gMgTrailSL[]; // last trailing SL price
 
@@ -3894,7 +3894,7 @@ double MoneyPerPointPerLot()
 
 double CalcLot(const double entry,const double sl)
 {
-   // Fixed lot mode REMOVED — risk-based only with hard caps
+   // Fixed lot mode REMOVED -- risk-based only with hard caps
    double riskPct=(InpSmallAccount? InpSmallAcctRiskPct : InpRiskPercent);
    double equityRisk=gAccount.Equity()*riskPct/100.0;
    // Hard cap 1: never risk more than InpMaxRiskDollars per trade
@@ -4131,7 +4131,7 @@ int DesiredDirection()
 {
    bool engLong=cur_longSignal, engShort=cur_shortSignal;
    if(InpSignalSource==SIG_ENGINE) return(engLong?1:engShort?-1:0);
-   // SIG_EITHER / SIG_BOTH / SIG_V72 — arrow leads. DOE removed from entry chain.
+   // SIG_EITHER / SIG_BOTH / SIG_V72 -- arrow leads. DOE removed from entry chain.
    if(engLong)  return(1);
    if(engShort) return(-1);
    // OWNERSHIP DEATH PATH: when 2+ death signals confirmed AND macro direction is dying,
@@ -4173,7 +4173,7 @@ bool PassesFilters(const int dir)
    if(dir==1 && !InpTradeLongs){ gEntryBlock="longs off"; return(false); }
    if(dir==-1&& !InpTradeShorts){ gEntryBlock="shorts off"; return(false); }
    if(cur_invInvalidated){ gEntryBlock="invalidated"; return(false); }
-   // ERF gate, grade, DOE confidence, opp score REMOVED — ownership death engine is the authority
+   // ERF gate, grade, DOE confidence, opp score REMOVED -- ownership death engine is the authority
    if(InpRequireHtfAlign && !(cur_htfAlign==dir || cur_htfAlign==0)){ gEntryBlock="HTF align"; return(false); }
    if(InpUseV60Context){
       if(InpReqNetAgree   && !(ctx_netBias==dir || ctx_netBias==0)){ gEntryBlock="network disagrees"; return(false); }
@@ -4196,7 +4196,7 @@ double RecSizeMult()
    string r=cur_compRegime;
    return( r=="Extreme"?0.65 : r=="High"?0.80 : r=="Medium"?1.0 : 1.25 );  // Low compression = wide loops
 }
-//--- SPEC AUDIT: PartialFrac() removed (partial close logic deleted — campaigns run to completion).
+//--- SPEC AUDIT: PartialFrac() removed (partial close logic deleted -- campaigns run to completion).
 
 //--- protective stop just beyond the recent KEY swing high/low (real structure).
 //--- long  -> below the lowest low of the last InpSwingLookback closed bars
@@ -4295,7 +4295,7 @@ double ComputeStructureSL(const int dir,const double entry,const bool fuEntry,co
 double ComputeTP(const int dir,const double entry,const double sl)
 {
    //--- SPEC AUDIT: ALL take-profit targets removed. Campaigns complete on ownership transfer /
-   //  terminal-sequence completion / P2 CHOCH — not on an arbitrary RR or price level.
+   //  terminal-sequence completion / P2 CHOCH -- not on an arbitrary RR or price level.
    //  Return 0 = no broker-side TP (the position lives until the engine closes it or SL hits). ---
    return(0.0);
 }
@@ -4338,14 +4338,14 @@ void TryEnter()
 {
    int dir=DesiredDirection();
    bool aggressive=false, fuEntry=false, mtfEntry=false;
-   // ═══════════════════════════════════════════════════════════════
-   // DEATH PATH — HIGHEST PRIORITY. Checked before ANY other logic.
+   // ???????????????????????????????????????????????????????????????
+   // DEATH PATH -- HIGHEST PRIORITY. Checked before ANY other logic.
    // When 2+ death signals confirmed, direction is set immediately.
-   // Macro curve dying → trade the opposing direction. No prerequisites.
-   // ═══════════════════════════════════════════════════════════════
+   // Macro curve dying -> trade the opposing direction. No prerequisites.
+   // ???????????????????????????????????????????????????????????????
    if(cur_ownerDeathSignals >= 2){
       int _macDeath = (cur_dirH4!=0)?cur_dirH4:(cur_dirH1!=0)?cur_dirH1:0;
-      if(_macDeath != 0 && dir==0) dir = -_macDeath;  // dying macro → oppose it
+      if(_macDeath != 0 && dir==0) dir = -_macDeath;  // dying macro -> oppose it
       // death fast-path: go straight to order, skip all intermediate gates
       if(_macDeath != 0){
          if(dir==1 && !InpTradeLongs){ gEntryBlock="longs off"; return; }
@@ -4388,9 +4388,9 @@ void TryEnter()
          dir=ctx_fuDir; aggressive=true; fuEntry=true;
       }
    }
-   //--- MULTI-TF: a fresh Demand/Supply Return on ANY rung (M1..H4) — the EA sees every timeframe ---
+   //--- MULTI-TF: a fresh Demand/Supply Return on ANY rung (M1..H4) -- the EA sees every timeframe ---
    //  Only a genuine ENTRY CYCLE (dominance transferred to the recursive wave) qualifies;
-   //  a first strike (low dominance) is skipped — the curve is still building.
+   //  a first strike (low dominance) is skipped -- the curve is still building.
    if(dir==0 && InpMultiTFEntry && cur_mtfEntryFresh && cur_mtfEntryDir!=0 && cur_mtfEntryWt>=InpMinEntryRung){
       bool _ctx=InpUseV60Context;
       bool _okManip = (!InpAvoidManipBand || !_ctx || !ctx_inManipBand || ctx_atTrueInduction);
@@ -4420,7 +4420,7 @@ void TryEnter()
    }
    if(dir==0){ gEntryBlock=(InpUseV60Context&&InpAggressiveEntry)?"no signal / v60 not aligned":"no signal (awaiting Return)"; return; }
 
-   // (death fast-path already handled at top of TryEnter — reaches here only for normal paths)
+   // (death fast-path already handled at top of TryEnter -- reaches here only for normal paths)
    //--- F72 entry-cycle context (computed ONCE, drives the vetoes + the gate below) --------
    bool _ctxOn=InpUseV60Context;
    bool _fast=(InpFastEntryOnComp && (cur_compRegime=="Extreme" || (_ctxOn && ctx_failureSwing)));
@@ -4443,7 +4443,7 @@ void TryEnter()
 
    //--- FLIP CONTEXT GATE (applies to ALL entry paths including FU/MTF/aggressive) ---
    //  Ported from V60: ALL curves have a flip zone. BUYS below, SELLS above.
-   //  Use HTF authority ONLY (M15/H1/H4) — M1/M3 zones are noise and flicker constantly.
+   //  Use HTF authority ONLY (M15/H1/H4) -- M1/M3 zones are noise and flicker constantly.
    //  The highest available HTF flip zone defines macro buy/sell territory.
    {
       double _bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
@@ -4466,7 +4466,7 @@ void TryEnter()
       int cb=ConsensusBias();
       if(cb!=0 && dir!=cb){ gEntryBlock=(dir==1?"long":"short")+" vetoed vs "+(cb==1?"BULL":"BEAR")+" thesis"; return; }
    }
-   //--- F72 UNIFIED ENTRY-CYCLE GATE — trade WITH the curve -------------------------------
+   //--- F72 UNIFIED ENTRY-CYCLE GATE -- trade WITH the curve -------------------------------
    //  Allow the entry when it is either (a) aligned with the live OWNER curve (continuation),
    //  or (b) a confirmed TERMINAL reversal where the new wave has taken control. Only a
    //  counter-trend, mid-build entry (neither of those) is blocked. A trigger (arrow / DOE /
@@ -4629,17 +4629,17 @@ void ManagePositions()
 {
    if(gMktClosed) return;
    //==================================================================
-   // F72 RECURSIVE CURVE OWNERSHIP ENGINE — CAMPAIGN MANAGEMENT
+   // F72 RECURSIVE CURVE OWNERSHIP ENGINE -- CAMPAIGN MANAGEMENT
    //==================================================================
    // SPEC AUDIT: ALL artificial exits removed (TP/BE/trailing/session/thesis-flip/partial/
    // life-score/narrative/phase-flip/opposite-signal). Recursive waves naturally contain
-   // pullbacks, internal liquidation, and ownership oscillation — these are NORMAL.
+   // pullbacks, internal liquidation, and ownership oscillation -- these are NORMAL.
    //
    // EXIT ONLY on:
-   // 1) OWNERSHIP TRANSFER — the opposing curve now dominates (new curve > InpOwnerTransferThresh %)
-   // 2) TERMINAL SEQUENCE COMPLETION — the campaign's S/D transition completed (ctx_termComplete
+   // 1) OWNERSHIP TRANSFER -- the opposing curve now dominates (new curve > InpOwnerTransferThresh %)
+   // 2) TERMINAL SEQUENCE COMPLETION -- the campaign's S/D transition completed (ctx_termComplete
    //    AND the owner is no longer the trade direction AND transfer is confirmed)
-   // 3) PHASE-2 CHOCH AGAINST POSITION — internal structure proves campaign failure (an
+   // 3) PHASE-2 CHOCH AGAINST POSITION -- internal structure proves campaign failure (an
    //    opposite-direction CHoCH on the owner rung while the campaign is in Transition)
    //
    // The position lives until one of these triggers OR the structure SL (hard stop on the broker
@@ -4661,7 +4661,7 @@ void ManagePositions()
       double rMult =(dir==1?(mkt-openP):(openP-mkt))/risk;
 
       //==============================================================
-      // PROFIT MANAGEMENT — 5 levels 20% each, configurable via inputs
+      // PROFIT MANAGEMENT -- 5 levels 20% each, configurable via inputs
       // Mode: Dollar amounts OR R-multiples (InpUseRMultiple)
       //==============================================================
       double posProfit=PositionGetDouble(POSITION_PROFIT);
@@ -4672,8 +4672,8 @@ void ManagePositions()
          if(closeLots<minLot) closeLots=minLot;
          if(closeLots>=posLots) closeLots=NormalizeLot(posLots*0.5); // safety: never close 100%
 
-         // Level 1 — close 20% + move SL to breakeven
-         // ── Thresholds (dollar or R-multiple) ──
+         // Level 1 -- close 20% + move SL to breakeven
+         // ?? Thresholds (dollar or R-multiple) ??
          double _tBE   = InpUseRMultiple ? risk*InpTPRBE    : InpTPDollarBE;
          double _tTrl  = InpUseRMultiple ? risk*InpTPRTrail : InpTPDollarTrail;
          double _t1    = InpUseRMultiple ? risk*InpTPR1     : InpTPDollar1;
@@ -4682,7 +4682,7 @@ void ManagePositions()
          double _t4    = InpUseRMultiple ? risk*InpTPR4     : InpTPDollar4;
          double _t5    = InpUseRMultiple ? risk*InpTPR5     : InpTPDollar5;
 
-         // Breakeven SL — independent trigger at $900
+         // Breakeven SL -- independent trigger at $900
          if(!gMgBEDone[mi] && posProfit>=_tBE){
             gMgBEDone[mi]=true;
             double beSL=(dir==1)?openP+_Point:openP-_Point;
@@ -4690,24 +4690,24 @@ void ManagePositions()
                trade.PositionModify(tk,NormPrice(beSL),0.0);
             if(InpDebugExits) Print("=== BE SL @profit=",DoubleToString(posProfit,0));
          }
-         // Trailing activation — independent trigger at $1200
+         // Trailing activation -- independent trigger at $1200
          if(!gMgTrailing[mi] && posProfit>=_tTrl){
             gMgTrailing[mi]=true;
             gMgTrailSL[mi]=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
             if(InpDebugExits) Print("=== TRAIL ON @profit=",DoubleToString(posProfit,0));
          }
-         // L1 $900 — close 20%
+         // L1 $900 -- close 20%
          if(!gMgP1Done[mi] && posProfit>=_t1){ gMgP1Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L2 $1600 — close 20%
+         // L2 $1600 -- close 20%
          else if(gMgP1Done[mi]&&!gMgP2Done[mi]&&posProfit>=_t2){ gMgP2Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L3 $3200 — close 20%
+         // L3 $3200 -- close 20%
          else if(gMgP2Done[mi]&&!gMgP3Done[mi]&&posProfit>=_t3){ gMgP3Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L4 $5500 — close 20%
+         // L4 $5500 -- close 20%
          else if(gMgP3Done[mi]&&!gMgP4Done[mi]&&posProfit>=_t4){ gMgP4Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
-         // L5 $7000 — close 20%
+         // L5 $7000 -- close 20%
          else if(gMgP4Done[mi]&&!gMgP5Done[mi]&&posProfit>=_t5){ gMgP5Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
 
-         // Trailing stop management — moves only in favour, never reverses
+         // Trailing stop management -- moves only in favour, never reverses
          if(gMgTrailing[mi]){
             double newTrail=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
             bool improved=(dir==1&&newTrail>gMgTrailSL[mi])||(dir==-1&&newTrail<gMgTrailSL[mi]);
@@ -4722,7 +4722,7 @@ void ManagePositions()
       int heldBars=(int)((TimeCurrent()-(datetime)PositionGetInteger(POSITION_TIME))/MathMax(PeriodSeconds(_Period),1));
       if(heldBars<InpMinHoldBars) continue;
 
-      //--- EXIT 1: OWNERSHIP TRANSFER — the curve that owns price has fully transferred
+      //--- EXIT 1: OWNERSHIP TRANSFER -- the curve that owns price has fully transferred
       //  to the opposing direction. This means the campaign we entered is no longer dominant;
       //  a new campaign in the opposite direction has taken over. ---
       if(InpExitOnOwnerTransfer){
@@ -4735,14 +4735,14 @@ void ManagePositions()
          }
       }
 
-      //--- EXIT 2: TERMINAL SEQUENCE COMPLETION — the campaign naturally reached its
+      //--- EXIT 2: TERMINAL SEQUENCE COMPLETION -- the campaign naturally reached its
       //  supply/demand terminal and the transition is complete. The campaign is finished;
       //  the ownership engine says the curve has delivered its full objective. ---
       if(InpExitOnTermComplete){
          bool termDone=(InpUseV60Context && ctx_termComplete);
          //  Only fire this exit if the terminal sequence belongs to the OPPOSING campaign
          //  (i.e., the ENTRY campaign's curve has been consumed and a new terminal against
-         //  it has matured). If the terminal is in OUR direction, it's our entry zone forming — hold.
+         //  it has matured). If the terminal is in OUR direction, it's our entry zone forming -- hold.
          bool termAgainstUs=(termDone && cur_ownerDir!=0 && cur_ownerDir!=dir);
          if(termAgainstUs){
             DbgExit("terminal-sequence-complete (campaign finished, owner "+cur_curveOwner+" "+f_waveDirLabel(cur_ownerDir)+")",tk,dir,openP,mkt,rMult);
@@ -4751,7 +4751,7 @@ void ManagePositions()
          }
       }
 
-      //--- EXIT 3: PHASE-2 CHOCH AGAINST POSITION — internal structure has broken against
+      //--- EXIT 3: PHASE-2 CHOCH AGAINST POSITION -- internal structure has broken against
       //  the campaign. This is a confirmed failure: the campaign tried to expand but the
       //  opposing wave printed a CHoCH on the owner rung (or higher), proving the campaign
       //  cannot hold. Requires confirmation bars to filter noise. ---
@@ -4836,16 +4836,16 @@ void ShowStatus()
    string s="";
    s+="LETRA 37 EA  ["+_Symbol+","+EnumToString(_Period)+"]\n";
    s+="Phase  : "+cur_currentDisplayPhase+"  (M5 "+f_waveDirLabel(cur_dirM5)+")\n";
-   s+="DOE    : REMOVED — ownership death engine is authority\n";
-   s+="Grade  : REMOVED — no grade/TQE/ERF gates\n";
-   s+="Opp    : REMOVED — no opportunity score gates\n";
+   s+="DOE    : REMOVED -- ownership death engine is authority\n";
+   s+="Grade  : REMOVED -- no grade/TQE/ERF gates\n";
+   s+="Opp    : REMOVED -- no opportunity score gates\n";
    s+="Stop   : "+PXs(cur_invActiveStop)+(cur_invInvalidated?" [INVALID]":"")+"   Target "+PXs(!naf(ctx_netTarget)?ctx_netTarget:ctx_attractorPx)+"\n";
    s+="Dest   : "+cur_tplWinnerClass+" "+PXs(cur_tplMainTarget)+" ("+cur_tplSource+")\n";
    s+="Pos    : "+IntegerToString(CountOwnPositions())+"   TradesToday "+IntegerToString(gTradesToday)+"\n";
    s+="Gate   : "+gEntryBlock+"\n";
-   // UNIFIED OWNERSHIP DEATH display — shows all 4 signals so the panel matches Gate 7 exactly
-   string _ds1Tx = (nz(MapVal(se240.t,se240.dom,se240.n,TimeCurrent()))>40.0||nz(MapVal(se60.t,se60.dom,se60.n,TimeCurrent()))>40.0) ? "SE✓" : "SE✗";
-   string _ds4Tx = ctx_life < (double)InpCurveDeadBelow ? "Life✓" : "Life✗";
+   // UNIFIED OWNERSHIP DEATH display -- shows all 4 signals so the panel matches Gate 7 exactly
+   string _ds1Tx = (nz(MapVal(se240.t,se240.dom,se240.n,TimeCurrent()))>40.0||nz(MapVal(se60.t,se60.dom,se60.n,TimeCurrent()))>40.0) ? "SE?" : "SE?";
+   string _ds4Tx = ctx_life < (double)InpCurveDeadBelow ? "Life?" : "Life?";
    string _deathTx = IntegerToString(cur_ownerDeathSignals)+"/4";
    string _gateTx  = cur_ownerDeathSignals>=2 ? "OPEN ("+_deathTx+")" : "BLOCKED ("+_deathTx+")";
    s+="Curve  : own "+cur_curveOwner+" "+f_waveDirLabel(cur_ownerDir)+"  "+cur_transState+"  ["+cur_entryReady+"]\n";
