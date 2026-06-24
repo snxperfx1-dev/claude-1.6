@@ -3676,7 +3676,7 @@ input group "Letra37 EA - Risk / Sizing"
 input ENUM_LOT_MODE InpLotMode          = LOT_RISK_PCT; // Position sizing: risk-based only
 input double        InpMaxRiskDollars    = 600.0;        // HARD CAP: max dollar risk per trade (never exceeded regardless of SL size or equity %)
 input double        InpRiskPercent      = 1.0;          // Risk % of equity per trade (capped at InpMaxRiskDollars)
-input double        InpMaxLot           = 2.0;          // Hard lot cap (reduced from 5: 5 lots/100k was ~3-5% risk/trade -> 96% DD)
+input double        InpMaxLot           = 2.0;          // Hard lot cap (2 lots fixed for gold)
 input int           InpMaxSpreadPoints  = 0;            // Max spread (points); 0=off (gold spreads are large!)
 
 input group "Letra37 EA - Small Account Mode (toggle)"
@@ -3732,7 +3732,7 @@ input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  against position. These are computed from live engine state each bar.
 input int           InpMinHoldBars      = 3;            // Min bars to hold before ANY campaign exit fires (protects against entry-bar reversal noise)
 input bool          InpExitOnOwnerTransfer = true;      // EXIT: close when curve OWNERSHIP has fully transferred away from the trade's campaign direction
-input double        InpOwnerTransferThresh = 80.0;      // Ownership transfer %: the opposing curve must dominate by at least this % to confirm transfer
+input double        InpOwnerTransferThresh = 45.0;      // Ownership transfer %: the opposing curve must dominate by at least this % to confirm transfer
 input bool          InpExitOnTermComplete  = true;      // EXIT: close when the terminal sequence of the campaign's S/D transition has completed (campaign naturally finished)
 input bool          InpExitOnP2CHOCH       = true;      // EXIT: close when a Phase-2 CHOCH prints against the position (internal structure proves campaign failure)
 input int           InpP2CHOCHConfirmBars  = 2;         // Bars of continued adverse structure to confirm a genuine P2 CHOCH (vs. wick noise)
