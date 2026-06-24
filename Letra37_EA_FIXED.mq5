@@ -3708,17 +3708,21 @@ input group "Letra37 EA - Take Profit"
 input bool          InpUseRMultiple    = false;        // TRUE = R-multiple mode (scales with risk), FALSE = fixed dollar amounts
 // Fixed dollar mode levels:
 input double        InpTPDollar1       = 900.0;        // Level 1 dollar profit → 20% close + breakeven SL
-input double        InpTPDollar2       = 1600.0;       // Level 2 dollar profit → 20% close + trailing stop ON
-input double        InpTPDollar3       = 4400.0;       // Level 3 dollar profit → 20% close
-input double        InpTPDollar4       = 6400.0;       // Level 4 dollar profit → 20% close
-input double        InpTPDollar5       = 8600.0;       // Level 5 dollar profit → 20% close
+input double        InpTPDollarBE      = 900.0;        // Breakeven SL trigger (moves SL to entry when profit >= this)
+input double        InpTPDollarTrail   = 1200.0;       // Trailing stop trigger (activates trail when profit >= this)
+input double        InpTPDollar2       = 1600.0;       // Level 2 dollar profit → 20% close
+input double        InpTPDollar3       = 3200.0;       // Level 3 dollar profit → 20% close
+input double        InpTPDollar4       = 5500.0;       // Level 4 dollar profit → 20% close
+input double        InpTPDollar5       = 7000.0;       // Level 5 dollar profit → 20% close
 // R-multiple mode levels (multiples of initial risk):
-input double        InpTPR1            = 1.0;          // Level 1 R → 20% close + breakeven SL
-input double        InpTPR2            = 2.0;          // Level 2 R → 20% close + trailing stop ON
+input double        InpTPR1            = 1.0;          // Level 1 R → 20% close
+input double        InpTPRBE           = 1.0;          // Breakeven SL trigger (R)
+input double        InpTPRTrail        = 1.5;          // Trailing stop trigger (R)
+input double        InpTPR2            = 2.0;          // Level 2 R → 20% close
 input double        InpTPR3            = 4.0;          // Level 3 R → 20% close
 input double        InpTPR4            = 6.0;          // Level 4 R → 20% close
-input double        InpTPR5            = 9.0;          // Level 5 R → 20% close
-input double        InpTrailAtr        = 2.0;          // Trailing stop distance in ATR after Level 2 hit
+input double        InpTPR5            = 8.0;          // Level 5 R → 20% close
+input double        InpTrailAtr        = 2.0;          // Trailing stop distance in ATR
 
 input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  SPEC AUDIT: break-even, trailing, partial, session-end, thesis-flip, phase-flip, opposite-
