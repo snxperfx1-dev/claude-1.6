@@ -1938,7 +1938,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    cur_curves[1].wp=nz(MapVal(se3.t,se3.wp,se3.n,ct)); cur_curves[1].dom=_inl_dom_m3; cur_curves[1].comp=nz(MapVal(se3.t,se3.comp,se3.n,ct)); cur_curves[1].phase=_inl_ph_m3;
 
    cur_curves[2].dir=l0_dir; cur_curves[2].origin=se5_inv;
-   cur_curves[2].extreme=(l0_dir==1?nz(se5_sh):l0_dir==-1?nz(se5_sl):NA);
+   cur_curves[2].extreme=(l0_dir==1?nz(MapVal(se5.t,se5.sh,se5.n,ct)):l0_dir==-1?nz(MapVal(se5.t,se5.sl,se5.n,ct)):NA);
    cur_curves[2].flipTop=MapVal(se5.t,se5.ft,se5.n,ct); cur_curves[2].flipBot=MapVal(se5.t,se5.fb,se5.n,ct);
    cur_curves[2].flipMid=(!naf(cur_curves[2].flipTop)&&!naf(cur_curves[2].flipBot))?(cur_curves[2].flipTop+cur_curves[2].flipBot)/2.0:NA;
    cur_curves[2].wp=nz(se5_wp); cur_curves[2].dom=_inl_dom_m5; cur_curves[2].comp=nz(MapVal(se5.t,se5.comp,se5.n,ct)); cur_curves[2].phase=_inl_ph_m5;
