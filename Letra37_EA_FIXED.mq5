@@ -941,6 +941,11 @@ double g_liqLevels[],g_liqWeights[]; int g_liqAges[],g_liqTypes[];
 int    g_lastSignalBar=-1,g_lastLongBar=-1,g_lastShortBar=-1; bool g_engineArmed=true;
 //--- trade state ---
 int    g_tradeDir=0,g_exitFiredBar=-1;
+//--- CONTINUATION HUNT MODE (Layer 2: demand/supply expansion entries after flip zone trade) ---
+int    g_huntMode=0;          // 0=off, 1=hunting longs at demand, -1=hunting shorts at supply
+int    g_huntActivatedBar=-1; // bar when hunt mode activated
+double g_huntDemandHi=NA;     // upper boundary of the demand hunt zone
+double g_huntDemandLo=NA;     // lower boundary of the demand hunt zone
 //--- previous-bar series memory ---
 double g_prevEnergy=0.0; int g_prevDirection=0,g_prevEntryCycle=0,g_prev_ede_state=0; bool g_prev_LBD=false;
 //--- FU blocks ---
@@ -1905,6 +1910,42 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool beliefEntryShort=_allowShort&&direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_correctSideShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
+
+   // ===== LAYER 2: CONTINUATION HUNT MODE (demand/supply expansion entries) =====
+   // After a flip zone trade confirms the thesis, HUNT for additional entries at demand/supply.
+   // These are EASIER entries: thesis already confirmed, just buying pullbacks to demand zone.
+   //
+   // Activation: when a Layer 1 signal fires → enable hunt mode in that direction
+   // Hunt zone for longs: at/below g_flipBot (the demand zone below the flip zone)
+   // Hunt zone for shorts: at/above g_flipTop (the supply zone above the flip zone)
+   // Deactivation: direction flip, invalidation, or wave reset
+
+   // Activate hunt mode on Layer 1 entry
+   if(longSignal && g_huntMode!=1){
+      g_huntMode=1; g_huntActivatedBar=i;
+      g_huntDemandHi=nz(g_flipBot,cl-atr); g_huntDemandLo=nz(g_point4OriginLow,g_huntDemandHi-atr*2.0);
+   }
+   if(shortSignal && g_huntMode!=-1){
+      g_huntMode=-1; g_huntActivatedBar=i;
+      g_huntDemandHi=nz(g_point4OriginHigh,g_flipTop+atr*2.0); g_huntDemandLo=nz(g_flipTop,cl+atr);
+   }
+   // Deactivate on invalidation or direction reset
+   if(g_huntMode!=0 && (safeToReset||hardInvalid||(g_huntMode==1&&bullInvalid)||(g_huntMode==-1&&bearInvalid)))
+      g_huntMode=0;
+
+   // Layer 2 entry: price returns to demand/supply zone after the initial flip trade
+   bool _huntLongZone = g_huntMode==1 && !naf(g_huntDemandHi) && cl<=g_huntDemandHi+atr*0.3 && cl>=g_huntDemandLo-atr*0.5;
+   bool _huntShortZone = g_huntMode==-1 && !naf(g_huntDemandLo) && cl>=g_huntDemandLo-atr*0.3 && cl<=g_huntDemandHi+atr*0.5;
+   // Relaxed conditions for continuation: macro direction + impulse/FU reaction + not locked
+   bool _huntReactionLong  = bullImpulse || bullMicroImpulse || _fuConfirmLong || bullConvShift;
+   bool _huntReactionShort = bearImpulse || bearMicroImpulse || _fuConfirmShort || bearConvShift;
+   bool huntLongSignal  = showSignals && _huntLongZone && _huntReactionLong && _macroDir==1 && !signalLocked && !withinLongLock && (i-g_huntActivatedBar)>5;
+   bool huntShortSignal = showSignals && _huntShortZone && _huntReactionShort && _macroDir==-1 && !signalLocked && !withinShortLock && (i-g_huntActivatedBar)>5;
+
+   // Merge Layer 1 + Layer 2 signals
+   if(huntLongSignal && !longSignal)  { longSignal=true; }
+   if(huntShortSignal && !shortSignal){ shortSignal=true; }
+
    if(longSignal){ g_lastSignalBar=i; g_lastLongBar=i; g_engineArmed=false; }
    if(shortSignal){ g_lastSignalBar=i; g_lastShortBar=i; g_engineArmed=false; }
    gBarLong=longSignal; gBarShort=shortSignal; gBarLongPx=lo-atr*0.7; gBarShortPx=hi+atr*0.7;
@@ -2556,6 +2597,7 @@ void ResetState()
    ArrayFree(g_liqLevels);ArrayFree(g_liqWeights);ArrayFree(g_liqAges);ArrayFree(g_liqTypes);
    g_lastSignalBar=-1;g_lastLongBar=-1;g_lastShortBar=-1;g_engineArmed=true;
    g_tradeDir=0;g_exitFiredBar=-1;g_prevEnergy=0;g_prevDirection=0;g_prevEntryCycle=0;g_prev_ede_state=0;g_prev_LBD=false;
+   g_huntMode=0;g_huntActivatedBar=-1;g_huntDemandHi=NA;g_huntDemandLo=NA;
    ArrayFree(g_fu_top);ArrayFree(g_fu_bot);ArrayFree(g_fu_birthBar);ArrayFree(g_fu_dir);ArrayFree(g_fu_state);
    g_fuw_tip=NA;g_fuw_bodyHigh=NA;g_fuw_bodyLow=NA;g_fuw_mid=NA;g_fuw_mid38=NA;g_fuw_mid62=NA;g_fuw_dir=0;g_fuw_leftPool=NA;g_fuw_bar=-1;g_fuw_valid=false;g_fuw_strength=NA;
    g_afe_step=0;g_afe_origin=NA;g_afe_originDir=0;g_afe_upperFlip=NA;g_afe_lowerFlip=NA;g_afe_upperFlipRole="-";g_afe_activeDest=NA;g_afe_target=NA;g_afe_selfReturnDone=false;g_afe_continuation=false;
