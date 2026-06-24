@@ -4297,7 +4297,48 @@ void TryEnter()
 {
    int dir=DesiredDirection();
    bool aggressive=false, fuEntry=false, mtfEntry=false;
-   //--- PRIORITY: enter AT the fresh FU node (the indicator's extreme) ---
+   // ═══════════════════════════════════════════════════════════════
+   // DEATH PATH — HIGHEST PRIORITY. Checked before ANY other logic.
+   // When 2+ death signals confirmed, direction is set immediately.
+   // Macro curve dying → trade the opposing direction. No prerequisites.
+   // ═══════════════════════════════════════════════════════════════
+   if(cur_ownerDeathSignals >= 2){
+      int _macDeath = (cur_dirH4!=0)?cur_dirH4:(cur_dirH1!=0)?cur_dirH1:0;
+      if(_macDeath != 0 && dir==0) dir = -_macDeath;  // dying macro → oppose it
+      // death fast-path: go straight to order, skip all intermediate gates
+      if(_macDeath != 0){
+         if(dir==1 && !InpTradeLongs){ gEntryBlock="longs off"; return; }
+         if(dir==-1 && !InpTradeShorts){ gEntryBlock="shorts off"; return; }
+         if(cur_invInvalidated){ gEntryBlock="invalidated"; return; }
+         if(!SessionOK()){ gEntryBlock="session closed"; return; }
+         int _maxT2=(InpSmallAccount&&InpSmallAcctMaxTrades>0)?(InpMaxTradesPerDay>0?MathMin(InpMaxTradesPerDay,InpSmallAcctMaxTrades):InpSmallAcctMaxTrades):InpMaxTradesPerDay;
+         if(_maxT2>0 && gTradesToday>=_maxT2){ gEntryBlock="max trades/day"; return; }
+         if(InpMaxSpreadPoints>0){ long sp=(long)SymbolInfoInteger(_Symbol,SYMBOL_SPREAD); if(sp>InpMaxSpreadPoints){ gEntryBlock="spread "+IntegerToString((int)sp); return; } }
+         int ownD=OwnPositionDir();
+         if(ownD!=0 && ownD!=dir){
+            if(OwnYoungerThan(InpMinHoldBars)){ gEntryBlock="hold (young pos)"; return; }
+            if(InpReverseOnOpposite){ CloseOwnPositions(0); DeletePendingOrders(); }
+            else { gEntryBlock="opposite pos open"; return; }
+         }
+         if(CountOwnPositions()>=InpMaxPositions){ gEntryBlock="max positions"; return; }
+         if(InpVerifyTradeAllowed && !TradingEnabled()){ gEntryBlock="algo-trading disabled"; return; }
+         sym.RefreshRates();
+         double askD=sym.Ask(), bidD=sym.Bid();
+         double entryD=(dir==1?askD:bidD);
+         gRecSizeMult=RecSizeMult();
+         double slD=ComputeStructureSL(dir,entryD,false,false);
+         double lotD=CalcLot(entryD,slD);
+         if(!MarginOK(dir,lotD,entryD)){ gEntryBlock="insufficient margin"; return; }
+         string cmtD=InpComment+" DEATH"+IntegerToString(cur_ownerDeathSignals);
+         bool okD=(dir==1)?trade.Buy(lotD,_Symbol,askD,slD,0.0,cmtD):trade.Sell(lotD,_Symbol,bidD,slD,0.0,cmtD);
+         if(!okD && MktClosed()) return;
+         MgRegister(trade.ResultOrder(),slD,NA,dir);
+         gTradesToday++; gEntryBlock="ENTERED DEATH"+IntegerToString(cur_ownerDeathSignals);
+         if(InpDebugEntries) Print("=== ENTRY DEATH ",(dir==1?"BUY":"SELL")," D=",cur_ownerDeathSignals,"/4 @",DoubleToString(entryD,_Digits)," SL=",DoubleToString(slD,_Digits));
+         return;
+      }
+   }
+   //--- NORMAL PATHS (FU / MTF / aggressive / arrow) ---
    if(dir==0 && InpUseV60Context && InpFUExtremeEntry && ctx_fuFresh && ctx_fuDir!=0){
       int cb=ConsensusBias();
       if(InpFURequireBias && cb!=0 && ctx_fuDir!=cb){
@@ -4336,55 +4377,9 @@ void TryEnter()
              && !(InpAggReqTime && InpTIEBlockOpposed && ctx_timeAlign>=InpTIEStrongAlign && ctx_timeDir!=0 && ctx_timeDir!=adir);
       if(ok){ dir=adir; aggressive=true; }
    }
-   // DEATH PATH: resolve dir from death engine BEFORE the dir==0 check
-   if(dir==0 && cur_ownerDeathSignals >= 2){
-      int _macD2 = (cur_dirH4!=0)?cur_dirH4:(cur_dirH1!=0)?cur_dirH1:0;
-      if(_macD2==-1 && cur_dirM5==1) dir=1;
-      if(_macD2==1  && cur_dirM5==-1) dir=-1;
-   }
    if(dir==0){ gEntryBlock=(InpUseV60Context&&InpAggressiveEntry)?"no signal / v60 not aligned":"no signal (awaiting Return)"; return; }
 
-   // ═══════════════════════════════════════════════════════════════════
-   // OWNERSHIP DEATH FAST-PATH: when 2+ death signals confirmed, skip ALL
-   // intermediate gates (InpRequireEntryCycle, SymphonyTrigger, flip context,
-   // counter-bias veto) and go straight to risk/session checks + order.
-   // The death engine triangulates 4 sources — it IS the entry authorisation.
-   // Only hard stops (longs off, shorts off, invalidated, session, spread,
-   // max positions, margin) still apply.
-   // ═══════════════════════════════════════════════════════════════════
-   bool _deathFastPath = (cur_ownerDeathSignals >= 2) && !aggressive;
-   if(_deathFastPath)
-   {
-      if(dir==1 && !InpTradeLongs){ gEntryBlock="longs off"; return; }
-      if(dir==-1 && !InpTradeShorts){ gEntryBlock="shorts off"; return; }
-      if(cur_invInvalidated){ gEntryBlock="invalidated"; return; }
-      if(!SessionOK()){ gEntryBlock="session closed"; return; }
-      int _maxT=(InpSmallAccount&&InpSmallAcctMaxTrades>0)?(InpMaxTradesPerDay>0?MathMin(InpMaxTradesPerDay,InpSmallAcctMaxTrades):InpSmallAcctMaxTrades):InpMaxTradesPerDay;
-      if(_maxT>0 && gTradesToday>=_maxT){ gEntryBlock="max trades/day"; return; }
-      if(InpMaxSpreadPoints>0){ long sp=(long)SymbolInfoInteger(_Symbol,SYMBOL_SPREAD); if(sp>InpMaxSpreadPoints){ gEntryBlock="spread "+IntegerToString((int)sp); return; } }
-      int ownDir2=OwnPositionDir();
-      if(ownDir2!=0 && ownDir2!=dir){
-         if(OwnYoungerThan(InpMinHoldBars)){ gEntryBlock="hold (young pos)"; return; }
-         if(InpReverseOnOpposite){ CloseOwnPositions(0); DeletePendingOrders(); }
-         else { gEntryBlock="opposite pos open"; return; }
-      }
-      if(CountOwnPositions()>=InpMaxPositions){ gEntryBlock="max positions"; return; }
-      if(InpVerifyTradeAllowed && !TradingEnabled()){ gEntryBlock="algo-trading disabled"; return; }
-      sym.RefreshRates();
-      double ask=sym.Ask(), bid2=sym.Bid();
-      double entry=(dir==1?ask:bid2);
-      gRecSizeMult=RecSizeMult();
-      double slBase=ComputeStructureSL(dir,entry,false,false);
-      double lot=CalcLot(entry,slBase);
-      if(!MarginOK(dir,lot,entry)){ gEntryBlock="insufficient margin"; return; }
-      double tp=NA; string cmt=InpComment+" DEATH"+IntegerToString(cur_ownerDeathSignals);
-      bool ok=(dir==1)?trade.Buy(lot,_Symbol,ask,slBase,tp,cmt):trade.Sell(lot,_Symbol,bid2,slBase,tp,cmt);
-      if(!ok && MktClosed()) return;
-      MgRegister(trade.ResultOrder(),slBase,NA,dir);
-      gTradesToday++; gEntryBlock="ENTERED DEATH"+IntegerToString(cur_ownerDeathSignals);
-      if(InpDebugEntries) Print("=== ENTRY DEATH ",(dir==1?"BUY":"SELL")," @",DoubleToString(entry,_Digits)," SL=",DoubleToString(slBase,_Digits)," D=",cur_ownerDeathSignals,"/4 lot=",DoubleToString(lot,2));
-      return;
-   }
+   // (death fast-path already handled at top of TryEnter — reaches here only for normal paths)
    //--- F72 entry-cycle context (computed ONCE, drives the vetoes + the gate below) --------
    bool _ctxOn=InpUseV60Context;
    bool _fast=(InpFastEntryOnComp && (cur_compRegime=="Extreme" || (_ctxOn && ctx_failureSwing)));
