@@ -1975,12 +1975,26 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    //==============================================================
    // SECTION 24 — TRADE STATE
    //==============================================================
-   // EXIT CONDITIONS — removed HTF-align opposition (kills trades exactly when they should run)
-   // and removed Transition/Retracement phase exit (premature; the trade entered at terminal)
-   // Kept: structural breaks against, convexity shift with energy loss, invalidation, stale OB
-   // Added: dominance loss exit — if ALL rungs lose dominance transfer the trade thesis is dead
+   // HTF FLIP ZONE EXIT + REVERSAL HUNT ACTIVATION
+   // When a long approaches the HTF flip zone from below → EXIT (natural TP) + hunt sells
+   // When a short approaches the HTF flip zone from above → EXIT (natural TP) + hunt buys
+   // The flip zone is both the EXIT for the current wave and the ENTRY for the reversal.
+   bool _approachingFlipFromBelow = g_tradeDir==1 && !naf(_ctx_fb) && cl>=_ctx_fb-atr*0.5;
+   bool _approachingFlipFromAbove = g_tradeDir==-1 && !naf(_ctx_ft) && cl<=_ctx_ft+atr*0.5;
+   bool _flipZoneExit = _approachingFlipFromBelow || _approachingFlipFromAbove;
+   // On flip zone exit: switch hunt mode to the opposite direction
+   if(_flipZoneExit && g_tradeDir==1 && g_huntMode!=(-1)){
+      g_huntMode=-1; g_huntActivatedBar=i;
+      g_huntDemandLo=nz(_ctx_fb,cl); g_huntDemandHi=nz(_ctx_ft,cl+atr*2.0);
+   }
+   if(_flipZoneExit && g_tradeDir==-1 && g_huntMode!=1){
+      g_huntMode=1; g_huntActivatedBar=i;
+      g_huntDemandHi=nz(_ctx_ft,cl); g_huntDemandLo=nz(_ctx_fb,cl-atr*2.0);
+   }
+
+   // EXIT CONDITIONS
    bool _domLost = _inl_dom_m5<25.0 && _inl_dom_m15<25.0 && _inl_dom_h1<25.0 && !_anyRungInReturn && !_anyRungInTerminal;
-   bool exitCondition=(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&!obFresh)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
+   bool exitCondition=_flipZoneExit||(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&!obFresh)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
    if(longSignal){ g_tradeDir=1; g_exitFiredBar=-1; }
    else if(shortSignal){ g_tradeDir=-1; g_exitFiredBar=-1; }
    else if(exitCondition&&g_tradeDir!=0){ g_exitFiredBar=i; g_tradeDir=0; }
