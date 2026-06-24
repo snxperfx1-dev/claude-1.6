@@ -1005,6 +1005,8 @@ int    cur_expRecDepth=0;      // expected recursive cycles still possible (0..4
 double cur_transMaturity=0.0;  // transition maturity % (= dominance transfer)
 double cur_entryProb=0.0;      // entry-cycle probability %
 double cur_distFlipAtr=0.0;    // distance to HTF flip/objective in ATR
+//--- MULTI-CURVE FLIP CONTEXT (stored for EA TryEnter access) ---
+double cur_ctxFlipTop=NA, cur_ctxFlipBot=NA, cur_ctxFlipMid=NA;
 //--- prev-bar phase code per rung (persist across recomputes; NOT reset by ResetState) ---
 int    gPrevPhM1=-1,gPrevPhM3=-1,gPrevPhM5=-1,gPrevPhM15=-1,gPrevPhH1=-1,gPrevPhH4=-1;
 string cur_l0phase,cur_l1phase,cur_l2phase,cur_l3phase,cur_l4phase;
@@ -1902,6 +1904,8 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Allow small buffer (0.3 ATR) for entries right at the zone edge
    bool _flipCtxAllowLong  = naf(_ctx_flipMid) || (cl <= _ctx_flipMid + atr*0.3);
    bool _flipCtxAllowShort = naf(_ctx_flipMid) || (cl >= _ctx_flipMid - atr*0.3);
+   // Store for EA TryEnter() access
+   cur_ctxFlipTop=_ctx_ft; cur_ctxFlipBot=_ctx_fb; cur_ctxFlipMid=_ctx_flipMid;
 
    // GATE 7: MACRO DIRECTION AUTHORITY — prevents counter-HTF garbage
    // The spec says: "Which curve currently owns price?" The HTF curve determines direction.
@@ -4008,6 +4012,17 @@ void TryEnter()
 
    //--- counter-bias veto: blocks RANDOM counter-trend trades, but NEVER a confirmed terminal
    //--- entry-cycle (that is exactly when we trade the new curve against the old consensus). ---
+
+   //--- FLIP CONTEXT GATE (applies to ALL entry paths including FU/MTF/aggressive) ---
+   //  BUYS only below flip zone midpoint. SELLS only above flip zone midpoint.
+   //  This is the universal rule: each curve has flipzone + supply (above) or flipzone + demand (below).
+   if(!naf(cur_ctxFlipMid)){
+      double _bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
+      double _atrGate=cur_atr>0?cur_atr:10*_Point;
+      if(dir==1 && _bid>cur_ctxFlipMid+_atrGate*0.3){ gEntryBlock="buy ABOVE flip zone (sell territory)"; return; }
+      if(dir==-1 && _bid<cur_ctxFlipMid-_atrGate*0.3){ gEntryBlock="sell BELOW flip zone (buy territory)"; return; }
+   }
+
    if(InpBlockCounterBias && !_terminalEntry){
       int cb=ConsensusBias();
       if(cb!=0 && dir!=cb){ gEntryBlock=(dir==1?"long":"short")+" vetoed vs "+(cb==1?"BULL":"BEAR")+" thesis"; return; }
