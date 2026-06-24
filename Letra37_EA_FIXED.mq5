@@ -2031,31 +2031,38 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // SECTION 24 — TRADE STATE
    //==============================================================
    // CURVE CONTEXT: each curve has ONLY 2 zones (one combo at a time):
-   //   COMBO A (bearish curve): flipzone + supply → sells at supply, exit shorts at flipzone
-   //   COMBO B (bullish curve): flipzone + demand → buys at demand, exit longs at flipzone
+   //   COMBO A (bearish curve): flipzone + supply → sells at supply, exit shorts at TARGET
+   //   COMBO B (bullish curve): flipzone + demand → buys at demand, exit longs at TARGET
    //
-   // Exit longs AT flipzone (bullish curve TP reached) → switch to COMBO A (sell at supply above)
-   // Exit shorts AT flipzone (bearish curve TP reached) → switch to COMBO B (buy at demand below)
-   bool _atFlipZoneLongExit = g_tradeDir==1 && !naf(_ctx_fb) && cl>=_ctx_fb-atr*0.3;
-   bool _atFlipZoneShortExit = g_tradeDir==-1 && !naf(_ctx_ft) && cl<=_ctx_ft+atr*0.3;
-   bool _flipZoneExit = _atFlipZoneLongExit || _atFlipZoneShortExit;
-   // Switch combo on exit:
-   // Long TP at flip → now COMBO A: hunt sells at supply (above _ctx_ft)
-   if(_atFlipZoneLongExit && g_huntMode!=-1){
-      g_huntMode=-1; g_huntActivatedBar=i;
-      g_huntDemandLo=nz(_ctx_ft,cl);                // supply starts at flip TOP
-      g_huntDemandHi=g_huntDemandLo+atr*3.0;        // supply extends above
+   // EXIT at the WAVE TARGET (se5_tgt / se60_tgt / se240_tgt), NOT at the entry flip zone.
+   // The entry IS the flip zone — exiting there means exiting immediately (zero room).
+   // The target is where the wave is HEADING (the next structural objective).
+   double _exitTarget = NA;
+   if(g_tradeDir==1){
+      // Long target: the M5/H1/H4 wave target ABOVE entry
+      if(!naf(se5_tgt) && se5_tgt>cl-atr*0.5) _exitTarget=se5_tgt;
+      else if(!naf(se60_tgt) && nz(MapVal(se60.t,se60.tgt,se60.n,ct))>cl-atr*0.5) _exitTarget=nz(MapVal(se60.t,se60.tgt,se60.n,ct));
+   } else if(g_tradeDir==-1){
+      // Short target: the M5/H1/H4 wave target BELOW entry
+      if(!naf(se5_tgt) && se5_tgt<cl+atr*0.5) _exitTarget=se5_tgt;
+      else if(!naf(se60_tgt) && nz(MapVal(se60.t,se60.tgt,se60.n,ct))<cl+atr*0.5) _exitTarget=nz(MapVal(se60.t,se60.tgt,se60.n,ct));
    }
-   // Short TP at flip → now COMBO B: hunt buys at demand (below _ctx_fb)
-   if(_atFlipZoneShortExit && g_huntMode!=1){
+   bool _targetReached = !naf(_exitTarget) && (g_tradeDir==1 ? cl>=_exitTarget : cl<=_exitTarget);
+   // When target reached → switch hunt mode to the opposite direction at the NEXT zone
+   if(_targetReached && g_tradeDir==1 && g_huntMode!=-1){
+      g_huntMode=-1; g_huntActivatedBar=i;
+      g_huntDemandLo=nz(_ctx_ft,cl);                // sell hunt zone starts at flip TOP (supply above)
+      g_huntDemandHi=g_huntDemandLo+atr*3.0;
+   }
+   if(_targetReached && g_tradeDir==-1 && g_huntMode!=1){
       g_huntMode=1; g_huntActivatedBar=i;
-      g_huntDemandHi=nz(_ctx_fb,cl);                // demand starts at flip BOTTOM
-      g_huntDemandLo=g_huntDemandHi-atr*3.0;        // demand extends below
+      g_huntDemandHi=nz(_ctx_fb,cl);                // buy hunt zone starts at flip BOTTOM (demand below)
+      g_huntDemandLo=g_huntDemandHi-atr*3.0;
    }
 
    // EXIT CONDITIONS
    bool _domLost = _inl_dom_m5<25.0 && _inl_dom_m15<25.0 && _inl_dom_h1<25.0 && !_anyRungInReturn && !_anyRungInTerminal;
-   bool exitCondition=_flipZoneExit||(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&!obFresh)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
+   bool exitCondition=_targetReached||(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&!obFresh)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
    if(longSignal){ g_tradeDir=1; g_exitFiredBar=-1; }
    else if(shortSignal){ g_tradeDir=-1; g_exitFiredBar=-1; }
    else if(exitCondition&&g_tradeDir!=0){ g_exitFiredBar=i; g_tradeDir=0; }
