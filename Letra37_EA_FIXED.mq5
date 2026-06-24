@@ -2032,74 +2032,123 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // SECTION 24 — TRADE STATE
    //==============================================================
    // ═══════════════════════════════════════════════════════════════════
-   // MULTI-TIMEFRAME CURVE OWNERSHIP ENGINE (full spec implementation)
-   // Entries belong to the lower timeframe.
-   // Direction belongs to the owner.
-   // Targets belong to the owner.
-   // Exits occur when ownership completes or transfers.
-   // Price is always trying to complete the highest active expansion.
+   // RECURSIVE CURVE OWNERSHIP ARCHITECTURE — Specification v8
+   // 15-layer unified decision engine.
+   // Core: "Who owns price? How mature is the transfer? How much curve remains?"
    // ═══════════════════════════════════════════════════════════════════
 
-   // --- OWNERSHIP DETECTION: which curve currently owns the expansion? ---
-   // Ownership score = phaseWeight × dominance × waveProgress
-   // EXPANSION > IMPULSE > TRANSITION in priority
-   // Highest score on the highest TF wins.
-   double _ownScore[6]; int _ownerIdx=-1; double _bestOwnScore=0;
+   // ─── LAYER 1: CURVE OWNERSHIP ENGINE (COE) ───────────────────────
+   // Each TF owns a curve. Ownership = highest dominance on highest TF in expansion.
+   // Score: phaseWeight × dominance × waveProgress × TF hierarchy weight
+   double _coeScore[6]; int _coeOwnerIdx=-1; double _coeBestScore=0;
    for(int _oi=0;_oi<6;_oi++){
       int _ph=cur_cv_phase[_oi]; int _d=cur_cv_dir[_oi];
-      double _wp=cur_cv_wp[_oi]; double _dm=cur_cv_dom[_oi];
-      // Phase weight: EXPANSION family = high, IMPULSE = med, TRANSITION = low, others = 0
-      double _phW=0;
-      if(_ph>=1&&_ph<=6) _phW=1.0;         // Expansion family (phases 1-6 = expansion/new high/low)
-      else if(_ph>=8&&_ph<=11) _phW=0.6;   // Retracement/terminal family (moving toward target)
-      else if(_ph==7) _phW=0.3;            // Transition
-      else if(_ph>=12) _phW=0.8;           // Return (confirmation)
-      _ownScore[_oi] = _phW * fmax2(_dm,10.0)/100.0 * fmax2(_wp,10.0)/100.0 * (_oi+1)*0.2; // higher TF = heavier weight
-      if(_d!=0 && _ownScore[_oi]>_bestOwnScore){ _bestOwnScore=_ownScore[_oi]; _ownerIdx=_oi; }
+      double _wp=cur_cv_wp[_oi]; double _dm=cur_cv_dom[_oi]; double _cmp=cur_cv_comp[_oi];
+      // Phase weight: EXPANSION family dominates
+      double _phW = (_ph>=1&&_ph<=4) ? 1.0 :   // Expansion/Pre-Conv/Induction/Liquidity
+                    (_ph==5||_ph==6) ? 0.9 :     // New High/Low (creation)
+                    (_ph>=8&&_ph<=11) ? 0.7 :    // Retracement family (active movement)
+                    (_ph>=12) ? 0.8 :            // Return (confirmed reversal)
+                    (_ph==7) ? 0.3 : 0.1;       // Transition / Origin
+      double _tfW = (_oi==5?1.0:_oi==4?0.85:_oi==3?0.70:_oi==2?0.55:_oi==1?0.35:0.20); // H4>H1>M15>M5>M3>M1
+      _coeScore[_oi] = _phW * fmax2(_dm,5.0)/100.0 * fmax2(_wp,5.0)/100.0 * _tfW;
+      if(_d!=0 && _coeScore[_oi]>_coeBestScore){ _coeBestScore=_coeScore[_oi]; _coeOwnerIdx=_oi; }
    }
-   // Owner curve properties
-   int    _ownerDir = _ownerIdx>=0 ? cur_cv_dir[_ownerIdx] : 0;
-   double _ownerFlipTop = _ownerIdx>=0 ? cur_cv_flipTop[_ownerIdx] : NA;
-   double _ownerFlipBot = _ownerIdx>=0 ? cur_cv_flipBot[_ownerIdx] : NA;
-   double _ownerOrigin = _ownerIdx>=0 ? cur_cv_origin[_ownerIdx] : NA;
-   double _ownerExtreme = _ownerIdx>=0 ? cur_cv_extreme[_ownerIdx] : NA;
-   // --- DESTINATION: owner's target zone (demand for bearish, supply for bullish) ---
-   // Bearish owner → destination = demand zone below (bullish curve's flip on same or lower TF)
-   // Bullish owner → destination = supply zone above (bearish curve's flip on same or lower TF)
-   double _destination=NA;
-   if(_ownerDir==-1){
-      // Bearish expansion → target is DEMAND below. Find highest TF bullish flip below price.
+   int    _coeDir = _coeOwnerIdx>=0 ? cur_cv_dir[_coeOwnerIdx] : 0;
+   double _coeDom = _coeOwnerIdx>=0 ? cur_cv_dom[_coeOwnerIdx] : 0;
+   double _coeWP  = _coeOwnerIdx>=0 ? cur_cv_wp[_coeOwnerIdx] : 0;
+   double _coeComp= _coeOwnerIdx>=0 ? cur_cv_comp[_coeOwnerIdx] : 0;
+
+   // ─── LAYER 2: OWNERSHIP TRANSFER ENGINE (OTE) ────────────────────
+   // Transfer is continuous: oldOwner% vs newOwner%
+   // States: STABLE → BUILDING → CONTESTED → TRANSFERRING → COMPLETE
+   double _oteOldPct = fmax2(0.0, 100.0 - _coeDom);
+   double _oteNewPct = _coeDom;
+   int _oteState = _oteNewPct>=60.0 ? 4 : _oteNewPct>=50.0 ? 3 : _oteNewPct>=35.0 ? 2 : _oteNewPct>=20.0 ? 1 : 0;
+   // STABLE=0, BUILDING=1, CONTESTED=2, TRANSFERRING=3, COMPLETE=4
+
+   // ─── LAYER 8: COMPRESSION ENGINE ─────────────────────────────────
+   // Only matters near terminal regions. Controls recursion geometry.
+   int _compLevel = _coeComp>=80 ? 3 : _coeComp>=55 ? 2 : _coeComp>=30 ? 1 : 0; // EXTREME=3,HIGH=2,MED=1,LOW=0
+   int _expectedRecursions = _compLevel>=3 ? 5 : _compLevel>=2 ? 4 : _compLevel>=1 ? 3 : 1;
+
+   // ─── LAYER 9: CURVE CAPACITY ENGINE (CCE) ────────────────────────
+   // How much curve is left? Determines recursion budget.
+   double _cceDestDist = NA;
+   // Find distance to owner's destination
+   if(_coeDir==-1){
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
-            _destination=cur_cv_flipTop[_ti]; break;  // bullish curve's flip TOP = top of demand zone
+            _cceDestDist=MathAbs(cl-cur_cv_flipTop[_ti])/fmax2(atr,1e-10); break;
          }
       }
-      // Fallback: owner's own origin or wave target
-      if(naf(_destination)){
-         if(!naf(_ownerOrigin) && _ownerOrigin<cl) _destination=_ownerOrigin;
-         else if(!naf(se5_tgt) && se5_tgt<cl) _destination=se5_tgt;
-      }
-   } else if(_ownerDir==1){
-      // Bullish expansion → target is SUPPLY above. Find highest TF bearish flip above price.
+   } else if(_coeDir==1){
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
-            _destination=cur_cv_flipBot[_ti]; break;  // bearish curve's flip BOT = bottom of supply zone
+            _cceDestDist=MathAbs(cur_cv_flipBot[_ti]-cl)/fmax2(atr,1e-10); break;
+         }
+      }
+   }
+   double _cceBudget = naf(_cceDestDist) ? 50.0 : fmin2(100.0, _cceDestDist*12.5);
+   double _cceWavelen = fmax2(0.4, 2.0*(1.0-_coeComp/100.0));
+   int    _cceCyclesRemaining = naf(_cceDestDist) ? 2 : (int)fmin2((double)_expectedRecursions, fmax2(0.0, MathRound(_cceDestDist/_cceWavelen)));
+
+   // ─── LAYER 7: ENTRY RECURSIVE ENGINE (ERE) ───────────────────────
+   // Build vs Execute detection. The critical distinction.
+   // ENTRY_NOT_READY → BUILDING → EARLY → PREENTRY → ACTIVE → TERMINAL
+   int _ereState = 0; // NOT_READY
+   bool _ereAtZone = g_nearFlipzone || g_closeInside;
+   if(_ereAtZone && _oteState>=3 && _cceBudget<30.0) _ereState=5;       // TERMINAL (imminent)
+   else if(_ereAtZone && _oteState>=3) _ereState=4;                      // ACTIVE (execute)
+   else if(_ereAtZone && _oteState>=2) _ereState=3;                      // PREENTRY (almost)
+   else if(_anyRungInTerminal && _oteState>=1) _ereState=2;              // EARLY
+   else if(_anyRungInTerminal || _anyRungInReturn) _ereState=1;          // BUILDING
+   // ERE maps to entry probability
+   double _ereProb = _ereState==5 ? 95.0 : _ereState==4 ? 80.0 : _ereState==3 ? 55.0 : _ereState==2 ? 30.0 : _ereState==1 ? 15.0 : 5.0;
+
+   // ─── LAYER 14: DYNAMIC DESTINATION ENGINE ────────────────────────
+   // Target = owner's destination zone (demand for bearish owner, supply for bullish owner)
+   // NOT the entry TF's opposite flip. The OWNER's destination.
+   double _destination=NA;
+   if(_coeDir==-1){
+      // Bearish owner → target = demand below (bullish curve's flip below price)
+      for(int _ti=5;_ti>=0;_ti--){
+         if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
+            _destination=cur_cv_flipTop[_ti]; break;
          }
       }
       if(naf(_destination)){
-         if(!naf(_ownerExtreme) && _ownerExtreme>cl) _destination=_ownerExtreme;
-         else if(!naf(se5_tgt) && se5_tgt>cl) _destination=se5_tgt;
+         double _owOrig=(_coeOwnerIdx>=0?cur_cv_origin[_coeOwnerIdx]:NA);
+         if(!naf(_owOrig)&&_owOrig<cl) _destination=_owOrig;
+         else if(!naf(se5_tgt)&&se5_tgt<cl) _destination=se5_tgt;
+      }
+   } else if(_coeDir==1){
+      // Bullish owner → target = supply above (bearish curve's flip above price)
+      for(int _ti=5;_ti>=0;_ti--){
+         if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
+            _destination=cur_cv_flipBot[_ti]; break;
+         }
+      }
+      if(naf(_destination)){
+         double _owExt=(_coeOwnerIdx>=0?cur_cv_extreme[_coeOwnerIdx]:NA);
+         if(!naf(_owExt)&&_owExt>cl) _destination=_owExt;
+         else if(!naf(se5_tgt)&&se5_tgt>cl) _destination=se5_tgt;
       }
    }
-   // --- DYNAMIC TARGET ESCALATION ---
-   // If current owner's target is reached, check if a higher TF now dominates → extend target
+
+   // ─── LAYER 15: EXIT ENGINE ───────────────────────────────────────
+   // Never exit because entryTF target hit.
+   // Exit when: ownership transfers, destination curve completes, or expansion matures.
    bool _destReached = !naf(_destination) && (g_tradeDir==1 ? cl>=_destination-atr*0.3 : g_tradeDir==-1 ? cl<=_destination+atr*0.3 : false);
-   // --- EXIT CONDITIONS ---
-   // Exit when: owner destination reached OR ownership changes against the trade
-   bool _ownershipLost = (g_tradeDir==1 && _ownerDir==-1) || (g_tradeDir==-1 && _ownerDir==1);
+   bool _ownershipAgainst = (g_tradeDir==1 && _coeDir==-1 && _oteState>=3) || (g_tradeDir==-1 && _coeDir==1 && _oteState>=3);
+   bool _expansionMature = _coeWP>=90.0 && _oteState>=2;
    bool _domLost = _inl_dom_m5<25.0 && _inl_dom_m15<25.0 && _inl_dom_h1<25.0 && !_anyRungInReturn && !_anyRungInTerminal;
-   bool exitCondition=_destReached||_ownershipLost||(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
-   // On destination reached → switch hunt mode to opposite at the reached zone
+   bool exitCondition = _destReached || _ownershipAgainst || _expansionMature ||
+        (g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||
+        (g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||
+        (g_tradeDir!=0&&_domLost);
+
+   // ─── HUNT MODE: on destination reached → hunt at the reached zone ─
    if(_destReached && g_tradeDir==1 && g_huntMode!=-1){
       g_huntMode=-1; g_huntActivatedBar=i;
       g_huntDemandLo=nz(_destination,cl); g_huntDemandHi=g_huntDemandLo+atr*3.0;
