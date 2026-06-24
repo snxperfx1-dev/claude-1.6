@@ -2043,13 +2043,18 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double _budgetBonus = (cur_curveBudget>0.0 && cur_curveBudget<25.0) ? 15.0 : 0.0;
    // Recursion depth: each counted recursion = old curve consuming its geometry
    double _recBonus = fmin2(20.0, (double)cur_recDepth*5.0);
-   bool _entryReadyGate = _highDomM5plus && _terminalOrReturn && (_execConfProxy + _budgetBonus + _recBonus >= 40.0);
+   // When ownership death is confirmed (2+ signals), _terminalOrReturn is not required:
+   // the death signals themselves confirm the curve is in its terminal stage.
+   bool _ownerDeathConfirmed = cur_ownerDeathSignals >= 2;
+   bool _entryReadyGate = _highDomM5plus && (_terminalOrReturn || _ownerDeathConfirmed) && (_execConfProxy + _budgetBonus + _recBonus >= 30.0);
 
    // v12: entry driven by engines only — no phase belief scores
    bool beliefEntryLong=_allowLong&&direction==1&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong;
    bool beliefEntryShort=_allowShort&&direction==-1&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort;
-   bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
-   bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
+   // When ownership death confirmed, bypass ERF gate (the ownership signal IS the readiness confirmation)
+   bool _erfBypass = _ownerDeathConfirmed && (cur_ownerDeathSignals >= 3 || _ds4_lifeDead);
+   bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&(erf_entryGate||_erfBypass);
+   bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&(erf_entryGate||_erfBypass);
 
    // ===== LAYER 2: CONTINUATION HUNT MODE (demand/supply expansion entries) =====
    // After a flip zone trade confirms the thesis, HUNT for additional entries at demand/supply.
@@ -4087,14 +4092,19 @@ int DesiredDirection()
    if(InpSignalSource==SIG_ENGINE) return(engLong?1:engShort?-1:0);
    if(InpSignalSource==SIG_V72)    return(v72Long?1:v72Short?-1:0);
    if(InpSignalSource==SIG_BOTH){ if(engLong&&v72Long) return(1); if(engShort&&v72Short) return(-1); return(0); }
-   // SIG_EITHER: the arrow is the faster, precise trigger -> it LEADS; the DOE is the
-   // continuously-updating next-entry bias and fills in when no arrow fired.
-   // No conflict suppression: a fresh opposite arrow simply flips the trade
-   // (handled in TryEnter via exit-on-opposite / reverse).
+   // SIG_EITHER: arrow leads, DOE fills in.
    if(engLong)  return(1);
    if(engShort) return(-1);
    if(v72Long)  return(1);
    if(v72Short) return(-1);
+   // OWNERSHIP DEATH PATH: when 2+ death signals confirmed AND macro direction is dying,
+   // the counter-direction IS the signal even when no arrow or DOE fired.
+   // This feeds directly into TryEnter's FU/MTF paths which check cur_ownerDir etc.
+   if(cur_ownerDeathSignals >= 2){
+      int _macD = (l4_dir!=0)?l4_dir:(l2_dir!=0)?l2_dir:0;
+      if(_macD==-1 && cur_dirM5==1) return(1);   // H4 bearish dying, M5 bullish forming
+      if(_macD==1  && cur_dirM5==-1) return(-1);  // H4 bullish dying, M5 bearish forming
+   }
    return(0);
 }
 
