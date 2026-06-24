@@ -3732,7 +3732,7 @@ input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  against position. These are computed from live engine state each bar.
 input int           InpMinHoldBars      = 3;            // Min bars to hold before ANY campaign exit fires (protects against entry-bar reversal noise)
 input bool          InpExitOnOwnerTransfer = true;      // EXIT: close when curve OWNERSHIP has fully transferred away from the trade's campaign direction
-input double        InpOwnerTransferThresh = 65.0;      // Ownership transfer %: the opposing curve must dominate by at least this % to confirm transfer
+input double        InpOwnerTransferThresh = 80.0;      // Ownership transfer %: the opposing curve must dominate by at least this % to confirm transfer
 input bool          InpExitOnTermComplete  = true;      // EXIT: close when the terminal sequence of the campaign's S/D transition has completed (campaign naturally finished)
 input bool          InpExitOnP2CHOCH       = true;      // EXIT: close when a Phase-2 CHOCH prints against the position (internal structure proves campaign failure)
 input int           InpP2CHOCHConfirmBars  = 2;         // Bars of continued adverse structure to confirm a genuine P2 CHOCH (vs. wick noise)
