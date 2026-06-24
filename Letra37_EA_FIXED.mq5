@@ -2031,25 +2031,35 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    //==============================================================
    // SECTION 24 — TRADE STATE
    //==============================================================
-   // EXIT at FLIP ZONE (the TP boundary between buy/sell territory)
-   // Entries are at demand (below) or supply (above). The flip zone is the TARGET.
-   // Long rides UP from demand → exits when reaching flip zone from below
-   // Short rides DOWN from supply → exits when reaching flip zone from above
-   bool _atFlipZoneLongExit = g_tradeDir==1 && !naf(_ctx_fb) && cl>=_ctx_fb-atr*0.3;
-   bool _atFlipZoneShortExit = g_tradeDir==-1 && !naf(_ctx_ft) && cl<=_ctx_ft+atr*0.3;
-   bool _flipZoneExit = _atFlipZoneLongExit || _atFlipZoneShortExit;
-   // When TP reached at flip zone → switch hunt mode to the opposite side
-   // Long TP at flip → hunt SELLS above flip zone (supply territory)
-   if(_atFlipZoneLongExit && g_huntMode!=-1){
-      g_huntMode=-1; g_huntActivatedBar=i;
-      g_huntDemandLo=nz(_ctx_ft,cl);                // sell hunt zone starts at flip TOP
-      g_huntDemandHi=g_huntDemandLo+atr*3.0;        // supply extends above
+   // EXIT at the OPPOSING flip zone (the one price is heading TOWARD)
+   // Long entered at demand → rides UP → exits at the SUPPLY flip zone above
+   // Short entered at supply → rides DOWN → exits at the DEMAND flip zone below
+   // Find the opposing flip zone: a curve with the OPPOSITE direction whose flip is ahead of price
+   double _exitFlipLong=NA, _exitFlipShort=NA;
+   for(int _ef=5;_ef>=2;_ef--){  // H4 > H1 > M15 > M5 priority
+      if(naf(_exitFlipLong) && cur_cv_dir[_ef]==-1 && !naf(cur_cv_flipBot[_ef]) && cur_cv_flipBot[_ef]>cl)
+         _exitFlipLong=cur_cv_flipBot[_ef];   // bearish curve's flip zone is ABOVE price = long target
+      if(naf(_exitFlipShort) && cur_cv_dir[_ef]==1 && !naf(cur_cv_flipTop[_ef]) && cur_cv_flipTop[_ef]<cl)
+         _exitFlipShort=cur_cv_flipTop[_ef];  // bullish curve's flip zone is BELOW price = short target
    }
-   // Short TP at flip → hunt BUYS below flip zone (demand territory)
-   if(_atFlipZoneShortExit && g_huntMode!=1){
+   // Fallback to wave target if no opposing flip zone found
+   if(naf(_exitFlipLong) && !naf(se5_tgt) && se5_tgt>cl) _exitFlipLong=se5_tgt;
+   if(naf(_exitFlipShort) && !naf(se5_tgt) && se5_tgt<cl) _exitFlipShort=se5_tgt;
+   bool _atTargetLongExit = g_tradeDir==1 && !naf(_exitFlipLong) && cl>=_exitFlipLong-atr*0.3;
+   bool _atTargetShortExit = g_tradeDir==-1 && !naf(_exitFlipShort) && cl<=_exitFlipShort+atr*0.3;
+   bool _flipZoneExit = _atTargetLongExit || _atTargetShortExit;
+   // When target reached → switch hunt mode to the opposite direction at the reached zone
+   // Long reached supply flip → hunt SELLS at supply (above that flip zone)
+   if(_atTargetLongExit && g_huntMode!=-1){
+      g_huntMode=-1; g_huntActivatedBar=i;
+      g_huntDemandLo=nz(_exitFlipLong,cl);           // sell hunt starts at the reached flip
+      g_huntDemandHi=g_huntDemandLo+atr*3.0;
+   }
+   // Short reached demand flip → hunt BUYS at demand (below that flip zone)
+   if(_atTargetShortExit && g_huntMode!=1){
       g_huntMode=1; g_huntActivatedBar=i;
-      g_huntDemandHi=nz(_ctx_fb,cl);                // buy hunt zone starts at flip BOTTOM
-      g_huntDemandLo=g_huntDemandHi-atr*3.0;        // demand extends below
+      g_huntDemandHi=nz(_exitFlipShort,cl);          // buy hunt starts at the reached flip
+      g_huntDemandLo=g_huntDemandHi-atr*3.0;
    }
 
    // EXIT CONDITIONS
