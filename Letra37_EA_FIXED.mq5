@@ -1439,6 +1439,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double currentToFlipMid=(!naf(g_flipTop)&&!naf(g_flipBot))?MathAbs(cl-(g_flipTop+g_flipBot)/2.0):atr*4.0;
    double currentToExtreme=direction==1?MathAbs(nz(g_cycleHigh,cl+atr)-cl):MathAbs(cl-nz(g_cycleLow,cl-atr));
    double _posNormDen=fmax2(waveTotalRange,atr*0.5);
+   if(_posNormDen<=0) _posNormDen=atr*5.0;
    double posDistToCreation   =fmin2(currentToExtreme/_posNormDen*100.0,100.0);
    double posDistToDemand     =fmin2(currentToFlipMid/_posNormDen*100.0,100.0);
 
@@ -3853,6 +3854,7 @@ double NormalizeLot(double lot)
    double maxlot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MAX);
    double step =SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_STEP);
    if(step<=0) step=0.01;
+   if(minlot<=0) minlot=0.01;
    lot=MathFloor(lot/step)*step;
    if(lot<minlot) lot=minlot;
    if(lot>maxlot) lot=maxlot;
@@ -3866,7 +3868,8 @@ double MoneyPerPointPerLot()
    double tickVal=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_VALUE);
    double tickSize=SymbolInfoDouble(_Symbol,SYMBOL_TRADE_TICK_SIZE);
    if(tickSize<=0) tickSize=_Point;
-   return(tickVal*(_Point/tickSize));
+   if(tickVal<=0) return(1.0);
+   return(tickVal*(_Point/fmax2(tickSize,1e-10)));
 }
 
 double CalcLot(const double entry,const double sl)
@@ -4645,7 +4648,9 @@ void ManagePositions()
       double posLots=PositionGetDouble(POSITION_VOLUME);
       if(mi>=0 && posLots>0 && posProfit>0){
          double closeLots=NormalizeLot(posLots*0.20);  // 20% of current position
-         if(closeLots<=0) closeLots=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+         double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+         if(closeLots<minLot) closeLots=minLot;
+         if(closeLots>=posLots) closeLots=NormalizeLot(posLots*0.5); // safety: never close 100%
 
          // Level 1 — $900 profit: close 20% + move SL to breakeven
          if(!gMgP1Done[mi] && posProfit>=900.0){
