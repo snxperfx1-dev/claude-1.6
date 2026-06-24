@@ -4099,9 +4099,9 @@ int DesiredDirection()
    if(v72Short) return(-1);
    // OWNERSHIP DEATH PATH: when 2+ death signals confirmed AND macro direction is dying,
    // the counter-direction IS the signal even when no arrow or DOE fired.
-   // This feeds directly into TryEnter's FU/MTF paths which check cur_ownerDir etc.
+   // Uses cur_dirH4/cur_dirH1 globals (available in DesiredDirection scope).
    if(cur_ownerDeathSignals >= 2){
-      int _macD = (l4_dir!=0)?l4_dir:(l2_dir!=0)?l2_dir:0;
+      int _macD = (cur_dirH4!=0)?cur_dirH4:(cur_dirH1!=0)?cur_dirH1:0;
       if(_macD==-1 && cur_dirM5==1) return(1);   // H4 bearish dying, M5 bullish forming
       if(_macD==1  && cur_dirM5==-1) return(-1);  // H4 bullish dying, M5 bearish forming
    }
