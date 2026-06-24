@@ -2632,7 +2632,23 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
          //--- transition / location state of the owner curve ---
          if(_opc==0||_opc==1||_opc==5||_opc==6)                cur_transState="BUILDING";       // origin/expansion/new high-low
          else if(_opc>=2 && _opc<=4)                            cur_transState="EXPANSION";
-         else if(_opc==7)                                       cur_transState=(_dm[_own]>=50.0?"TRANSITION COMPLETE":"TRANSITION");
+         else if(_opc==7){
+            // TRANSITION MATURITY — derived from engines, not phase sequences.
+            // A curve with deep recursion + collapsing old ownership CANNOT remain "Early".
+            double _tDepthScore = fmin2(100.0, _rcc[_own]*25.0);   // recursion depth (0-4 → 0-100)
+            double _tCompScore = _cmp[_own];                        // compression (0-100)
+            double _tTransferProg = _dm[_own];                      // dominance transfer (0-100)
+            double _tExhaustion = fmin2(100.0, _wpp[_own]*0.5 + _dm[_own]*0.3 + (100.0-(100.0-_dm[_own]))*0.2);
+            double _tBudgetSpent = 100.0 - fmin2(100.0, cur_curveBudget);
+            double _tMaturity = _tDepthScore*0.25 + _tCompScore*0.20 + _tTransferProg*0.25 + _tExhaustion*0.20 + _tBudgetSpent*0.10;
+            // RECURSION OVERRIDE: deep recursion + high compression + old curve collapsing = CANNOT be early
+            if(_rcc[_own]>=3 && _cmp[_own]>=50.0 && (100.0-_dm[_own])<50.0)
+               _tMaturity = fmin2(85.0, _tMaturity+20.0);
+            // Map maturity to state label
+            cur_transState = _tMaturity>=85.0 ? "TRANSITION TERMINAL" :
+                             _tMaturity>=60.0 ? "TRANSITION LATE" :
+                             _tMaturity>=30.0 ? "TRANSITION MID" : "TRANSITION EARLY";
+         }
          else if(_opc==8)                                       cur_transState="RETRACEMENT";
          else if(_opc==9)                                       cur_transState="APPROACHING FLIP";
          else if(_opc>=10 && _opc<=11)                          cur_transState="TERMINAL";
@@ -2660,9 +2676,10 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
          if(cur_mtfEntryFresh)                                  cur_entryReady=(cur_mtfEntryDom>=50.0?"Entry Active":"Pre-entry");
          else if(_atFlipZone && _highDomM5plus && _terminalOrReturn) cur_entryReady="Entry Active";
          else if(_anyRungInTerminal && _inl_dom_m5>=40.0)       cur_entryReady="Pre-entry";
-         else if(cur_transState=="TERMINAL"||cur_transState=="APPROACHING FLIP") cur_entryReady="Pre-entry";
-         else if(cur_transState=="TRANSITION COMPLETE"||cur_transState=="RETRACEMENT") cur_entryReady="Building";
-         else if(cur_transState=="TRANSITION")                  cur_entryReady="Early";
+         else if(cur_transState=="TERMINAL"||cur_transState=="APPROACHING FLIP"||cur_transState=="TRANSITION TERMINAL") cur_entryReady="Pre-entry";
+         else if(cur_transState=="TRANSITION LATE"||cur_transState=="RETRACEMENT") cur_entryReady="Building";
+         else if(cur_transState=="TRANSITION MID")              cur_entryReady="Early";
+         else if(cur_transState=="TRANSITION EARLY")            cur_entryReady="Too Early";
          else                                                   cur_entryReady="Not Ready";
 
          //--- CURVE CAPACITY ENGINE: how much curve is left -> how many recursions fit -------
