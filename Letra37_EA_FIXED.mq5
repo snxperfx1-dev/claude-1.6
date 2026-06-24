@@ -1879,16 +1879,30 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _correctSideLong  = naf(_fzMidEntry) || (cl <= _fzMidEntry + atr*0.3);  // at/below mid (demand side)
    bool _correctSideShort = naf(_fzMidEntry) || (cl >= _fzMidEntry - atr*0.3);  // at/above mid (supply side)
 
+   // GATE 7: MACRO DIRECTION AUTHORITY — prevents counter-HTF garbage
+   // The spec says: "Which curve currently owns price?" The HTF curve determines direction.
+   // Problem: M5 direction flips during induction/liquidation, enabling counter-HTF trades.
+   // Fix: Use H4 > H1 > fractalStack as stable directional authority.
+   // Counter-HTF trades ONLY allowed for anticipatory entries (dom>=80% + terminal on a rung)
+   int _macroDir = (l4_dir!=0) ? l4_dir : (l2_dir!=0) ? l2_dir : fractalStackDir;
+   bool _anticipatoryLong  = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
+   bool _anticipatoryShort = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
+   bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong;
+   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort;
+
    // COMBINED ENTRY READINESS — ALL gates must pass
    bool _entryReadyGate = _atFlipZone && _highDomM5plus && _terminalOrReturn;
 
-   // --- ENTRY CONDITIONS (calibrated to Image 1+2 quality) ---
+   // --- ENTRY CONDITIONS ---
+   // Spec: At demand zone (bullish macro) → ONLY BUYS.
+   //       At supply zone (bearish macro) → ONLY SELLS.
+   //       Anticipatory (dom>=80% at HTF flip with transition complete) → allowed against macro.
    bool _terminalPhaseLong = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
         ie1a_currentPhase=="Demand Return");
    bool _terminalPhaseShort = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
         ie1a_currentPhase=="Supply Return");
-   bool beliefEntryLong=direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_correctSideLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
-   bool beliefEntryShort=direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_correctSideShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryLong=_allowLong&&direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_correctSideLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryShort=_allowShort&&direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_correctSideShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    if(longSignal){ g_lastSignalBar=i; g_lastLongBar=i; g_engineArmed=false; }
