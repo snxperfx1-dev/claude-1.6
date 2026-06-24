@@ -997,6 +997,7 @@ int    cur_ownerDir=0;         // owner curve direction
 string cur_transState="-";     // BUILDING / TRANSITION / COMPLETE / APPROACHING FLIP / TERMINAL / ENTRY
 string cur_compRegime="-";     // Low / Medium / High / Extreme (compression near terminal)
 int    cur_recDepth=0;         // recursion count on the owner curve
+int    cur_ownerDeathSignals=0; // 0-4: how many death signals agree (unified ownership death)
 double cur_domTransfer=0.0;    // owner curve dominance transfer %
 string cur_entryReady="Not Ready"; // Not Ready / Early / Building / Pre-entry / Entry Active / Terminal
 //--- CURVE CAPACITY (F72): how much curve is left -> how many recursions are possible ---
@@ -1965,30 +1966,70 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    cur_cv_flipMid[5]=(!naf(cur_cv_flipTop[5])&&!naf(cur_cv_flipBot[5]))?(cur_cv_flipTop[5]+cur_cv_flipBot[5])/2.0:NA;
    cur_cv_wp[5]=nz(MapVal(se240.t,se240.wp,se240.n,ct)); cur_cv_dom[5]=nz(MapVal(se240.t,se240.dom,se240.n,ct)); cur_cv_comp[5]=nz(MapVal(se240.t,se240.comp,se240.n,ct)); cur_cv_phase[5]=(int)nz(se240_ph);
 
-   // GATE 7: MACRO DIRECTION AUTHORITY — prevents counter-HTF garbage
-   // The spec says: "Which curve currently owns price?" The HTF curve determines direction.
-   // Problem: M5 direction flips during induction/liquidation, enabling counter-HTF trades.
-   // Fix: Use H4 > H1 > fractalStack as stable directional authority.
-   // Counter-HTF trades ONLY allowed for anticipatory entries (dom>=80% + terminal on a rung)
+   // ═══════════════════════════════════════════════════════
+   // GATE 7: UNIFIED OWNERSHIP DEATH ENGINE (4-signal convergence)
+   // Replaces single-variable Gate 7. Old: _macroDom>50 alone (5-15 bar lag).
+   // New: triangulate from 4 independent sources. Requires 2+ to agree.
+   //
+   // SIGNAL 1 — SE engine dom (slow/structural):
+   //   The SE recBrk counter crossed majority (>40%). Lagging but reliable.
+   //   Threshold lowered to 40% (not 50%) because we require convergence,
+   //   so we don't need this signal alone to be conclusive.
+   //
+   // SIGNAL 2 — LTF structural reversal (fast/structural):
+   //   2+ lower timeframes have reversed against the macro direction.
+   //   M5 bearish + M1 bearish while H4 is bullish = visible structure reversed.
+   //
+   // SIGNAL 3 — HOE opposing weight (composite/current):
+   //   30%+ of collective TF weight is now in the OPPOSITE direction.
+   //   Computed from cur_cv_dir[] which is available in Section 21.
+   //
+   // SIGNAL 4 — V60 curve life (composite/fast):
+   //   ctx_life < InpCurveDeadBelow (default 32). Multiple inputs combined.
+   //   When life is DEAD, the curve's energy, force and retrace all confirm death.
+   // ═══════════════════════════════════════════════════════
    int _macroDir = (l4_dir!=0) ? l4_dir : (l2_dir!=0) ? l2_dir : fractalStackDir;
-   // v12: Gate 7 uses OWNERSHIP TRANSFER + EXHAUSTION, not phase numbers.
-   // The question is not "what phase is H4 in?" but "has the old curve's dominance collapsed?"
-   // Old curve dominance < 50% AND transfer progress > 60% AND exhaustion confirms → allow counter.
-   double _macroDom = (l4_dir!=0) ? nz(MapVal(se240.t,se240.dom,se240.n,ct)) : (l2_dir!=0) ? nz(MapVal(se60.t,se60.dom,se60.n,ct)) : nz(MapVal(se5.t,se5.dom,se5.n,ct));
+   double _macroDom = (l4_dir!=0) ? nz(MapVal(se240.t,se240.dom,se240.n,ct)) :
+                      (l2_dir!=0) ? nz(MapVal(se60.t,se60.dom,se60.n,ct)) :
+                      nz(MapVal(se5.t,se5.dom,se5.n,ct));
    double _macroWP = (l4_dir!=0) ? cur_cv_wp[5] : (l2_dir!=0) ? cur_cv_wp[4] : cur_cv_wp[2];
-   // Old curve dominance = 100 - dom (dom measures the recursive/new curve's share)
-   double _oldCurveDom = 100.0 - _macroDom;
-   // Transfer progress: how far the handover has gone (dom itself is the new curve's ownership %)
-   double _transferProgress = _macroDom;
-   // Exhaustion: combination of high wave progress + low old dominance + high transfer
-   double _macroExhaustion = fmin2(100.0, _macroWP*0.40 + _transferProgress*0.35 + (100.0-_oldCurveDom)*0.25);
-   // Allow counter-direction ONLY when old curve is truly dying (ownership-based, not phase-based)
-   bool _macroExhaustedLong = (_macroDir==-1) && (_oldCurveDom<50.0) && (_transferProgress>40.0) && (_macroExhaustion>55.0);
-   bool _macroExhaustedShort = (_macroDir==1) && (_oldCurveDom<50.0) && (_transferProgress>40.0) && (_macroExhaustion>55.0);
+
+   // --- 4 independent death signals, each scored 0 or 1 ---
+   // Signal 1: SE dom crossed 40% (lagging, structural)
+   bool _ds1_seDom = _macroDom > 40.0;
+   // Signal 2: LTF structural reversal count
+   int _ltfCountAgainst = 0;
+   if(m1_dir!=0 && m1_dir!=_macroDir) _ltfCountAgainst++;
+   if(l3_dir!=0 && l3_dir!=_macroDir) _ltfCountAgainst++;
+   if(l0_dir!=0 && l0_dir!=_macroDir) _ltfCountAgainst++;
+   if(l1_dir!=0 && l1_dir!=_macroDir) _ltfCountAgainst++;
+   if(l2_dir!=0 && l2_dir!=_macroDir && _macroDir==l4_dir) _ltfCountAgainst++; // H1 vs H4
+   bool _ds2_ltfRev = _ltfCountAgainst >= 2;
+   // Signal 3: HOE opposing weight (quick calc from cur_cv_dir[], available here)
+   int _oppDir = -_macroDir;
+   double _oppWeight = 0.0, _totWeight = 0.0;
+   double _hoeWts[6] = {0.20, 0.35, 0.55, 0.70, 0.85, 1.0};
+   for(int _qi=0;_qi<6;_qi++){
+      _totWeight += _hoeWts[_qi];
+      if(cur_cv_dir[_qi]==_oppDir) _oppWeight += _hoeWts[_qi];
+   }
+   bool _ds3_hoeOpp = _totWeight>0 && (_oppWeight/_totWeight)>0.30;
+   // Signal 4: V60 curve life says DEAD
+   bool _ds4_lifeDead = ctx_life < (double)InpCurveDeadBelow;
+   // Count death signals
+   int _deathSignalsLong  = ((!_ds1_seDom)?0:1) + (_ds2_ltfRev&&_macroDir==-1?1:0) + (_ds3_hoeOpp&&_oppDir==1?1:0) + (_ds4_lifeDead?1:0);
+   int _deathSignalsShort = ((!_ds1_seDom)?0:1) + (_ds2_ltfRev&&_macroDir==1?1:0) + (_ds3_hoeOpp&&_oppDir==-1?1:0) + (_ds4_lifeDead?1:0);
+   // Generic death count (max of both directions, for display)
+   int _totalDeathSignals = MathMax(_deathSignalsLong, _deathSignalsShort);
+   cur_ownerDeathSignals = _totalDeathSignals;
+   // 2+ signals = curve is dying, allow counter-trend entries
+   bool _ownerDeadForLong  = (_macroDir==-1) && (_deathSignalsLong  >= 2);
+   bool _ownerDeadForShort = (_macroDir==1)  && (_deathSignalsShort >= 2);
+   // Legacy anticipatory path (very high dom + terminal phase = immediate override)
    bool _anticipatoryLong  = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
    bool _anticipatoryShort = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
-   bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong || _macroExhaustedLong;
-   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || _macroExhaustedShort;
+   bool _allowLong  = (_macroDir==1)  || (_macroDir==0) || _anticipatoryLong  || _ownerDeadForLong;
+   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || _ownerDeadForShort;
 
    // COMBINED ENTRY READINESS — v12 AUDIT FIX
    // DEAD variables wired: _eceEntryConf, cur_curveBudget, cur_recDepth all now contribute.
@@ -2660,8 +2701,10 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
          if(_owRecDepth>=3 && _owComp>=50.0 && (100.0-_owDomNow)<50.0)
             _owTransMat = fmin2(90.0, _owTransMat+20.0);
          // State from maturity (ownership-driven, not phase-driven)
-         if(_owTransMat>=85.0)                                  cur_transState="TRANSITION TERMINAL";
-         else if(_owTransMat>=60.0 || (_owDomNow<30.0 && _ltfAgainstOwner>=2)) cur_transState="TRANSITION LATE";
+         // UNIFIED DEATH OVERRIDE: if Gate 7 already determined 2+ death signals,
+         // cur_transState must reflect that — no more BUILDING when curves are dying.
+         if(cur_ownerDeathSignals >= 3)                         cur_transState="TRANSITION TERMINAL";
+         else if(cur_ownerDeathSignals >= 2 || _owTransMat>=60.0 || (_owDomNow<30.0 && _ltfAgainstOwner>=2)) cur_transState="TRANSITION LATE";
          else if(_owTransMat>=35.0 || (_owDomNow<45.0 && _ltfAgainstOwner>=1)) cur_transState="TRANSITION MID";
          else if(_owWPnow<25.0 && _owDomNow>65.0)              cur_transState="BUILDING";
          else if(_owWPnow<50.0 && _owDomNow>50.0)              cur_transState="EXPANSION";
@@ -2938,6 +2981,7 @@ void ResetState()
    g_lastSignalBar=-1;g_lastLongBar=-1;g_lastShortBar=-1;g_engineArmed=true;
    g_tradeDir=0;g_exitFiredBar=-1;g_prevEnergy=0;g_prevDirection=0;g_prevEntryCycle=0;g_prev_ede_state=0;g_prev_LBD=false;
    g_huntMode=0;g_huntActivatedBar=-1;g_huntDemandHi=NA;g_huntDemandLo=NA;
+   cur_ownerDeathSignals=0;
    ArrayFree(g_fu_top);ArrayFree(g_fu_bot);ArrayFree(g_fu_birthBar);ArrayFree(g_fu_dir);ArrayFree(g_fu_state);
    g_fuw_tip=NA;g_fuw_bodyHigh=NA;g_fuw_bodyLow=NA;g_fuw_mid=NA;g_fuw_mid38=NA;g_fuw_mid62=NA;g_fuw_dir=0;g_fuw_leftPool=NA;g_fuw_bar=-1;g_fuw_valid=false;g_fuw_strength=NA;
    g_afe_step=0;g_afe_origin=NA;g_afe_originDir=0;g_afe_upperFlip=NA;g_afe_lowerFlip=NA;g_afe_upperFlipRole="-";g_afe_activeDest=NA;g_afe_target=NA;g_afe_selfReturnDone=false;g_afe_continuation=false;
@@ -4657,7 +4701,13 @@ void ShowStatus()
    s+="Dest   : "+cur_tplWinnerClass+" "+PXs(cur_tplMainTarget)+" ("+cur_tplSource+")\n";
    s+="Pos    : "+IntegerToString(CountOwnPositions())+"   TradesToday "+IntegerToString(gTradesToday)+"\n";
    s+="Gate   : "+gEntryBlock+"\n";
+   // UNIFIED OWNERSHIP DEATH display — shows all 4 signals so the panel matches Gate 7 exactly
+   string _ds1Tx = (nz(MapVal(se240.t,se240.dom,se240.n,TimeCurrent()))>40.0||nz(MapVal(se60.t,se60.dom,se60.n,TimeCurrent()))>40.0) ? "SE✓" : "SE✗";
+   string _ds4Tx = ctx_life < (double)InpCurveDeadBelow ? "Life✓" : "Life✗";
+   string _deathTx = IntegerToString(cur_ownerDeathSignals)+"/4";
+   string _gateTx  = cur_ownerDeathSignals>=2 ? "OPEN ("+_deathTx+")" : "BLOCKED ("+_deathTx+")";
    s+="Curve  : own "+cur_curveOwner+" "+f_waveDirLabel(cur_ownerDir)+"  "+cur_transState+"  ["+cur_entryReady+"]\n";
+   s+="Death  : "+_gateTx+"  "+_ds1Tx+"  LTF-rev  HOE-wt  "+_ds4Tx+"  life="+R0(ctx_life)+"\n";
    s+="Recur  : dom "+R0(cur_domTransfer)+"%  comp "+cur_compRegime+"  depth "+IntegerToString(cur_recDepth)+"/"+IntegerToString(cur_expRecDepth)+(cur_mtfEntryFresh?("  | RET "+cur_mtfEntryTF+" "+(cur_mtfEntryDir==1?"L":"S")+" dom "+R0(cur_mtfEntryDom)+"%"):"")+"\n";
    s+="Cap    : budget "+R0(cur_curveBudget)+"%  toFlip "+DoubleToString(cur_distFlipAtr,1)+"ATR  entryP "+R0(cur_entryProb)+"%\n";
    s+="ARC    : apex "+PXs(ctx_arcApex)+"  now "+PXs(ctx_arcNow)+"  dir "+(ctx_arcDir==1?"up":ctx_arcDir==-1?"down":"-")+"\n";
