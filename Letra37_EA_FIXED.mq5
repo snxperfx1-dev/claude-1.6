@@ -1704,7 +1704,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool structFlipBear=g_direction==-1&&bearConvShift&&structBias==1;
    // v11: recursiveTrigger driven by ENGINES not phase labels
    // Uses se5_wp >= 85% as proxy for "curve at return/terminal" (available here, before v9 engines)
-   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(nz(se5_wp)>=85.0)&&g_demandReturnBelief>40&&g_direction!=0&&!naf(g_flipTop);
+   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(nz(se5_wp)>=85.0)&&(nz(se5_dom)>=40.0)&&g_direction!=0&&!naf(g_flipTop);
    if(recursiveTrigger&&(g_recursiveFiredBar<0||(i-g_recursiveFiredBar)>resetBars)){
       g_recursiveJustFired=true; g_recursiveFiredBar=i; g_recursiveComplete=true;
       int idx=MathMin(MathMax(g_entryCycle,1)-1,3);
@@ -1729,7 +1729,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool bearInvalid=g_direction==-1&&cl>g_flipTop+atr*0.5;
    bool opposingMove=(g_direction==1&&bearImpulse)||(g_direction==-1&&bullImpulse);
    bool hardInvalid=bullInvalid||bearInvalid;
-   bool softReset=barsSinceCont>resetBars&&opposingMove&&(ie1a_currentPhase!="Demand Return"&&ie1a_currentPhase!="Supply Return")&&g_demandReturnBelief<30&&g_expansionBelief<30&&!erf_suppressRotation;
+   bool softReset=barsSinceCont>resetBars&&opposingMove&&(nz(se5_wp)<75.0)&&(nz(se5_dom)<30.0)&&!erf_suppressRotation;
    bool safeToReset=hardInvalid||softReset;
    if(g_direction!=l0_dir&&safeToReset){
       g_direction=0; g_lastSpawnDir=0; g_flipTop=NA; g_flipBot=NA; g_contBar=-1; g_obBirthBar=-1; g_barsInZone=0;
@@ -1980,10 +1980,9 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // The flip context gate (_flipCtxAllowLong/Short) already ensures correct side (below/above flip)
    bool _entryReadyGate = _highDomM5plus && _terminalOrReturn;
 
-   // v11: Entry driven by engine-available data (v9 full engines computed later for exit)
-   // Uses: _highDomM5plus + _terminalOrReturn + _entryReadyGate + flip context + multi-TF
-   bool beliefEntryLong=_allowLong&&direction==1&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong&&g_expansionBelief<60;
-   bool beliefEntryShort=_allowShort&&direction==-1&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort&&g_expansionBelief<60;
+   // v12: entry driven by engines only — no phase belief scores
+   bool beliefEntryLong=_allowLong&&direction==1&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong;
+   bool beliefEntryShort=_allowShort&&direction==-1&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
 
