@@ -1990,9 +1990,19 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong || _macroExhaustedLong;
    bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || _macroExhaustedShort;
 
-   // COMBINED ENTRY READINESS — flip zone is NOT required for entry (entries are at demand/supply AWAY from flip)
-   // The flip context gate (_flipCtxAllowLong/Short) already ensures correct side (below/above flip)
-   bool _entryReadyGate = _highDomM5plus && _terminalOrReturn;
+   // COMBINED ENTRY READINESS — v12 AUDIT FIX
+   // DEAD variables wired: _eceEntryConf, cur_curveBudget, cur_recDepth all now contribute.
+   // Uses SE-available data (computed before isLast):
+   double _se5DomNow = nz(MapVal(se5.t,se5.dom,se5.n,ct));
+   double _se5WPnow = nz(se5_wp);
+   // Execution confidence proxy from available data
+   double _execConfProxy = fmin2(100.0, _se5DomNow*0.35 + _se5WPnow*0.35 +
+        (double)fmin2(_inl_dom_m5,_inl_dom_m15)*0.15 + (_anyRungInTerminal||_anyRungInReturn?15.0:0.0));
+   // Curve capacity: budget<25% = close to target = higher readiness
+   double _budgetBonus = (cur_curveBudget>0.0 && cur_curveBudget<25.0) ? 15.0 : 0.0;
+   // Recursion depth: each counted recursion = old curve consuming its geometry
+   double _recBonus = fmin2(20.0, (double)cur_recDepth*5.0);
+   bool _entryReadyGate = _highDomM5plus && _terminalOrReturn && (_execConfProxy + _budgetBonus + _recBonus >= 40.0);
 
    // v12: entry driven by engines only — no phase belief scores
    bool beliefEntryLong=_allowLong&&direction==1&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong;
@@ -2241,6 +2251,8 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
       _eceCompression*0.10 +
       _eceDestination*0.15 +
       _eceRecursion*0.15);
+   // WIRE: store execution confidence as global so it reaches entry gates and display
+   cur_entryProb = fmin2(100.0, fmax2(cur_entryProb, _eceEntryConf));  // upgrade if ECE is higher
 
    // ─── EXIT ENGINE ─────────────────────────────────────────────────
    // Never exit because entryTF target hit.
@@ -2675,14 +2687,16 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
                cur_mtfEntryDom=_dm[_r];
             }
          }
-         //--- entry readiness (the build-vs-execute call) ---
-         // NOTE: The FUNCTIONAL entry gate is now computed INLINE on every bar (see Section 21).
-         // This display variable mirrors the inline logic for dashboard only.
+         //--- entry readiness: AUDIT FIX — display now matches execution (cur_entryProb gates both) ---
+         // _entryReadyGate uses (_execConfProxy + _budgetBonus + _recBonus >= 40%) + dom + terminal.
+         // cur_entryReady mirrors that using cur_entryProb (which was upgraded by ECE in the v9 block).
+         bool _erd_domOK = nz(MapVal(se5.t,se5.dom,se5.n,ct))>=50.0 || nz(MapVal(se15.t,se15.dom,se15.n,ct))>=75.0;
+         bool _erd_phOK = _anyRungInReturn||_anyRungInTerminal;
          if(cur_mtfEntryFresh)                                  cur_entryReady=(cur_mtfEntryDom>=50.0?"Entry Active":"Pre-entry");
-         else if(_atFlipZone && _highDomM5plus && _terminalOrReturn) cur_entryReady="Entry Active";
-         else if(_anyRungInTerminal && _inl_dom_m5>=40.0)       cur_entryReady="Pre-entry";
-         else if(cur_transState=="TERMINAL"||cur_transState=="APPROACHING FLIP"||cur_transState=="TRANSITION TERMINAL") cur_entryReady="Pre-entry";
-         else if(cur_transState=="TRANSITION LATE"||cur_transState=="RETRACEMENT") cur_entryReady="Building";
+         else if(_erd_domOK && _erd_phOK && cur_entryProb>=70.0) cur_entryReady="Entry Active";
+         else if(_erd_domOK && _erd_phOK && cur_entryProb>=45.0) cur_entryReady="Pre-entry";
+         else if(cur_transState=="TRANSITION TERMINAL"||cur_transState=="TERMINAL"||cur_transState=="APPROACHING FLIP") cur_entryReady="Pre-entry";
+         else if(cur_transState=="TRANSITION LATE"||cur_transState=="RETRACEMENT"||cur_transState=="ENTRY (Return)") cur_entryReady="Building";
          else if(cur_transState=="TRANSITION MID")              cur_entryReady="Early";
          else if(cur_transState=="TRANSITION EARLY")            cur_entryReady="Too Early";
          else                                                   cur_entryReady="Not Ready";
