@@ -4066,25 +4066,22 @@ void TryEnter()
 
    //--- FLIP CONTEXT GATE (applies to ALL entry paths including FU/MTF/aggressive) ---
    //  Ported from V60: ALL curves have a flip zone. BUYS below, SELLS above.
-   //  Check ALL 6 timeframe curves — use the NEAREST relevant flip zone to current price.
-   //  The algo now has full awareness of which curves it's working within.
+   //  Use HTF authority ONLY (M15/H1/H4) — M1/M3 zones are noise and flicker constantly.
+   //  The highest available HTF flip zone defines macro buy/sell territory.
    {
       double _bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
       double _atrGate=cur_atr>0?cur_atr:10*_Point;
-      // Find the nearest flip zone from all curves (closest to price = most relevant context)
-      double _nearestFlipMid=NA; double _nearestDist=DBL_MAX;
-      for(int _ci=0;_ci<6;_ci++){
-         if(!naf(cur_cv_flipMid[_ci])){
-            double _d=MathAbs(_bid-cur_cv_flipMid[_ci]);
-            if(_d<_nearestDist){ _nearestDist=_d; _nearestFlipMid=cur_cv_flipMid[_ci]; }
-         }
-      }
-      // Fallback to the primary HTF context
-      if(naf(_nearestFlipMid)) _nearestFlipMid=cur_ctxFlipMid;
-      // Apply the universal rule from all curves
-      if(!naf(_nearestFlipMid)){
-         if(dir==1 && _bid>_nearestFlipMid+_atrGate*0.3){ gEntryBlock="buy ABOVE flip zone (sell territory)"; return; }
-         if(dir==-1 && _bid<_nearestFlipMid-_atrGate*0.3){ gEntryBlock="sell BELOW flip zone (buy territory)"; return; }
+      // Check HTF flip zones in priority order: H4 > H1 > M15 > M5 (skip M1/M3 noise)
+      double _htfFlipMid=NA;
+      if(!naf(cur_cv_flipMid[5]))      _htfFlipMid=cur_cv_flipMid[5];  // H4
+      else if(!naf(cur_cv_flipMid[4])) _htfFlipMid=cur_cv_flipMid[4];  // H1
+      else if(!naf(cur_cv_flipMid[3])) _htfFlipMid=cur_cv_flipMid[3];  // M15
+      else if(!naf(cur_cv_flipMid[2])) _htfFlipMid=cur_cv_flipMid[2];  // M5
+      if(naf(_htfFlipMid)) _htfFlipMid=cur_ctxFlipMid;  // fallback
+      // Apply the universal rule: buys below flip, sells above flip
+      if(!naf(_htfFlipMid)){
+         if(dir==1 && _bid>_htfFlipMid+_atrGate*0.3){ gEntryBlock="buy ABOVE HTF flip zone (sell territory)"; return; }
+         if(dir==-1 && _bid<_htfFlipMid-_atrGate*0.3){ gEntryBlock="sell BELOW HTF flip zone (buy territory)"; return; }
       }
    }
 
