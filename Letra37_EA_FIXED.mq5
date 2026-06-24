@@ -1971,10 +1971,15 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Fix: Use H4 > H1 > fractalStack as stable directional authority.
    // Counter-HTF trades ONLY allowed for anticipatory entries (dom>=80% + terminal on a rung)
    int _macroDir = (l4_dir!=0) ? l4_dir : (l2_dir!=0) ? l2_dir : fractalStackDir;
+   // v12: When macro curve is in TRANSITION (phase 7+), its expansion is DYING.
+   // The lower TF counter-move (bullish M5 vs bearish H4 in transition) is the EMERGING wave.
+   // Allow the counter-direction when the macro curve is no longer expanding.
+   int _macroPhase = (l4_dir!=0) ? cur_cv_phase[5] : (l2_dir!=0) ? cur_cv_phase[4] : cur_cv_phase[2];
+   bool _macroTransitioning = _macroPhase>=7;  // phase 7+ = transition/retracement/terminal/return (expansion OVER)
    bool _anticipatoryLong  = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
    bool _anticipatoryShort = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
-   bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong;
-   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort;
+   bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong || (_macroDir==-1 && _macroTransitioning);
+   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || (_macroDir==1 && _macroTransitioning);
 
    // COMBINED ENTRY READINESS — flip zone is NOT required for entry (entries are at demand/supply AWAY from flip)
    // The flip context gate (_flipCtxAllowLong/Short) already ensures correct side (below/above flip)
