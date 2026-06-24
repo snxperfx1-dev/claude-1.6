@@ -3815,7 +3815,15 @@ bool     gMktClosed     = false; // set when a management/flip order is rejected
 datetime eaT[]; double eaO[],eaH[],eaL[],eaC[],eaVol[];
 
 //--- per-ticket management memory ---
+// 5 partial-close levels (dollars profit): 900, 2300, 4400, 6400, 8600 → 20% each
 ulong  gMgTicket[]; double gMgInitSL[]; double gMgTP1[]; bool gMgPartialDone[]; bool gMgBEDone[]; int gMgDir[];
+bool   gMgP1Done[];  // $900  — 20% close + move SL to breakeven
+bool   gMgP2Done[];  // $2300 — 20% close
+bool   gMgP3Done[];  // $4400 — 20% close
+bool   gMgP4Done[];  // $6400 — 20% close
+bool   gMgP5Done[];  // $8600 — 20% close + activate trailing stop
+bool   gMgTrailing[];// trailing stop active (after $8600 hit)
+double gMgTrailSL[]; // last trailing SL price
 
 //==================================================================
 // HELPERS
@@ -3899,13 +3907,19 @@ void MgRegister(const ulong tk,const double initSL,const double tp1,const int di
    if(MgIndex(tk)>=0) return;
    int s=ArraySize(gMgTicket);
    ArrayResize(gMgTicket,s+1);ArrayResize(gMgInitSL,s+1);ArrayResize(gMgTP1,s+1);ArrayResize(gMgPartialDone,s+1);ArrayResize(gMgBEDone,s+1);ArrayResize(gMgDir,s+1);
+   ArrayResize(gMgP1Done,s+1);ArrayResize(gMgP2Done,s+1);ArrayResize(gMgP3Done,s+1);ArrayResize(gMgP4Done,s+1);ArrayResize(gMgP5Done,s+1);
+   ArrayResize(gMgTrailing,s+1);ArrayResize(gMgTrailSL,s+1);
    gMgTicket[s]=tk; gMgInitSL[s]=initSL; gMgTP1[s]=tp1; gMgPartialDone[s]=false; gMgBEDone[s]=false; gMgDir[s]=dir;
+   gMgP1Done[s]=false; gMgP2Done[s]=false; gMgP3Done[s]=false; gMgP4Done[s]=false; gMgP5Done[s]=false;
+   gMgTrailing[s]=false; gMgTrailSL[s]=0.0;
 }
 void MgCleanup()
 {
    for(int q=ArraySize(gMgTicket)-1;q>=0;q--){
       if(!posinfo.SelectByTicket(gMgTicket[q])){
          ArrayRemove(gMgTicket,q,1);ArrayRemove(gMgInitSL,q,1);ArrayRemove(gMgTP1,q,1);ArrayRemove(gMgPartialDone,q,1);ArrayRemove(gMgBEDone,q,1);ArrayRemove(gMgDir,q,1);
+         ArrayRemove(gMgP1Done,q,1);ArrayRemove(gMgP2Done,q,1);ArrayRemove(gMgP3Done,q,1);ArrayRemove(gMgP4Done,q,1);ArrayRemove(gMgP5Done,q,1);
+         ArrayRemove(gMgTrailing,q,1);ArrayRemove(gMgTrailSL,q,1);
       }
    }
 }
@@ -4618,6 +4632,70 @@ void ManagePositions()
       double initSL=(mi>=0?gMgInitSL[mi]:curSL);
       double risk  =MathAbs(openP-initSL); if(risk<=0 || initSL<=0) risk=atr;
       double rMult =(dir==1?(mkt-openP):(openP-mkt))/risk;
+
+      //==============================================================
+      // PROFIT MANAGEMENT — 5 levels, 20% each
+      // $900 → 20% + breakeven SL
+      // $2300 → 20%
+      // $4400 → 20%
+      // $6400 → 20%
+      // $8600 → 20% + trailing stop
+      //==============================================================
+      double posProfit=PositionGetDouble(POSITION_PROFIT);
+      double posLots=PositionGetDouble(POSITION_VOLUME);
+      if(mi>=0 && posLots>0 && posProfit>0){
+         double closeLots=NormalizeLot(posLots*0.20);  // 20% of current position
+         if(closeLots<=0) closeLots=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+
+         // Level 1 — $900 profit: close 20% + move SL to breakeven
+         if(!gMgP1Done[mi] && posProfit>=900.0){
+            gMgP1Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L1 @$900 closed ",DoubleToString(closeLots,2)," lots profit=",DoubleToString(posProfit,2));
+            // Move SL to breakeven (open price + 1 point buffer)
+            double beSL=(dir==1)?openP+_Point:openP-_Point;
+            if((dir==1&&beSL>curSL)||(dir==-1&&beSL<curSL))
+               if(trade.PositionModify(tk,beSL,0.0))
+                  if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits));
+         }
+         // Level 2 — $2300 profit: close 20%
+         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=2300.0){
+            gMgP2Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L2 @$2300 closed ",DoubleToString(closeLots,2)," lots");
+         }
+         // Level 3 — $4400 profit: close 20%
+         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=4400.0){
+            gMgP3Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L3 @$4400 closed ",DoubleToString(closeLots,2)," lots");
+         }
+         // Level 4 — $6400 profit: close 20%
+         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=6400.0){
+            gMgP4Done[mi]=true;
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L4 @$6400 closed ",DoubleToString(closeLots,2)," lots");
+         }
+         // Level 5 — $8600 profit: close 20% + activate trailing stop
+         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=8600.0){
+            gMgP5Done[mi]=true;
+            gMgTrailing[mi]=true;
+            gMgTrailSL[mi]=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
+            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
+               if(InpDebugExits) Print("=== PARTIAL L5 @$8600 closed ",DoubleToString(closeLots,2)," lots + trailing activated");
+         }
+
+         // Trailing stop management (active after level 5)
+         if(mi>=0 && gMgTrailing[mi]){
+            double newTrail=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
+            bool improved=(dir==1&&newTrail>gMgTrailSL[mi])||(dir==-1&&newTrail<gMgTrailSL[mi]);
+            if(improved && ((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
+               gMgTrailSL[mi]=newTrail;
+               if(trade.PositionModify(tk,NormPrice(newTrail),0.0))
+                  if(InpDebugExits) Print("=== TRAIL SL moved to ",DoubleToString(newTrail,_Digits));
+            }
+         }
+      }
 
       //--- minimum hold gate: never exit on the entry bar (noise) ---
       int heldBars=(int)((TimeCurrent()-(datetime)PositionGetInteger(POSITION_TIME))/MathMax(PeriodSeconds(_Period),1));
