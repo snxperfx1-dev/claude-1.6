@@ -1835,9 +1835,10 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // GATE 1: FLIP ZONE PROXIMITY — must be AT or INSIDE the flip zone (not random retracement)
    bool _atFlipZone = g_nearFlipzone || g_closeInside;
 
-   // GATE 2: HIGH DOMINANCE — at least 75% on M5+ (not weak 50% on M1 noise)
-   // The perfect sell had dom=100%. We require 75% minimum on a meaningful rung.
-   bool _highDomM5plus = _inl_dom_m5>=75.0 || _inl_dom_m15>=75.0 || _inl_dom_h1>=75.0;
+   // GATE 2: HIGH DOMINANCE — require M5 specifically >=75% (the execution timeframe)
+   // The bad buy had dom=56% on M5 but passed because H1 was high. M5 is what matters for execution.
+   // Fallback: if M5 is 60%+ AND a higher rung is 75%+, also acceptable (anticipatory from HTF)
+   bool _highDomM5plus = _inl_dom_m5>=75.0 || (_inl_dom_m5>=60.0 && (_inl_dom_m15>=75.0||_inl_dom_h1>=75.0));
 
    // GATE 3: MULTI-TF ALIGNMENT — calibrated for BOTH scenarios:
    //   A) Strong: 3+ of 6 TFs aligned (clear directional consensus)
@@ -1870,7 +1871,15 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _confirmationLong  = _fuConfirmLong || _structConfirmLong;
    bool _confirmationShort = _fuConfirmShort || _structConfirmShort;
 
-   // COMBINED ENTRY READINESS — ALL gates must pass (like the perfect sell)
+   // GATE 6: DIRECTIONAL PRICE POSITION — the critical zone-edge rule:
+   //   BUYS must be BELOW the flip zone midpoint (at/near demand = lower FU edge)
+   //   SELLS must be ABOVE the flip zone midpoint (at/near supply = upper FU edge)
+   // The bad buy entered ABOVE the zone — it should have been a sell zone, not a buy zone.
+   double _fzMidEntry = (!naf(g_flipTop)&&!naf(g_flipBot)) ? (g_flipTop+g_flipBot)/2.0 : NA;
+   bool _correctSideLong  = naf(_fzMidEntry) || (cl <= _fzMidEntry + atr*0.3);  // at/below mid (demand side)
+   bool _correctSideShort = naf(_fzMidEntry) || (cl >= _fzMidEntry - atr*0.3);  // at/above mid (supply side)
+
+   // COMBINED ENTRY READINESS — ALL gates must pass
    bool _entryReadyGate = _atFlipZone && _highDomM5plus && _terminalOrReturn;
 
    // --- ENTRY CONDITIONS (calibrated to Image 1+2 quality) ---
@@ -1878,8 +1887,8 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
         ie1a_currentPhase=="Demand Return");
    bool _terminalPhaseShort = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
         ie1a_currentPhase=="Supply Return");
-   bool beliefEntryLong=direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
-   bool beliefEntryShort=direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryLong=direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_correctSideLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryShort=direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_correctSideShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    if(longSignal){ g_lastSignalBar=i; g_lastLongBar=i; g_engineArmed=false; }
