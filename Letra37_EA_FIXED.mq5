@@ -3894,14 +3894,17 @@ double MoneyPerPointPerLot()
 
 double CalcLot(const double entry,const double sl)
 {
-   // Fixed lot mode REMOVED — risk-based only with $600 hard cap
+   // Fixed lot mode REMOVED — risk-based only with hard caps
    double riskPct=(InpSmallAccount? InpSmallAcctRiskPct : InpRiskPercent);
    double equityRisk=gAccount.Equity()*riskPct/100.0;
+   // Hard cap 1: never risk more than InpMaxRiskDollars per trade
    double riskMoney=fmin2(equityRisk, InpMaxRiskDollars);
    double slPts=MathAbs(entry-sl)/_Point;
    double mpp=MoneyPerPointPerLot();
-   if(slPts<1 || mpp<=0) return(NormalizeLot(0.01));  // minimum if SL is bad
+   if(slPts<1 || mpp<=0) return(NormalizeLot(0.01));
    double lot=riskMoney/(slPts*fmax2(mpp,1e-10));
+   // Hard cap 2: 5 lot maximum (gold liquidity / slippage ceiling)
+   lot=fmin2(lot, 5.0);
    return(NormalizeLot(lot));
 }
 
