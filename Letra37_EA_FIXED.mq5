@@ -4669,53 +4669,47 @@ void ManagePositions()
          if(closeLots>=posLots) closeLots=NormalizeLot(posLots*0.5); // safety: never close 100%
 
          // Level 1 — close 20% + move SL to breakeven
-         if(!gMgP1Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR1:InpTPDollar1)){
-            gMgP1Done[mi]=true;
-            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L1 @L1 closed ",DoubleToString(closeLots,2)," lots profit=",DoubleToString(posProfit,2));
-            // Move SL to breakeven (open price + 1 point buffer)
+         // ── Thresholds (dollar or R-multiple) ──
+         double _tBE   = InpUseRMultiple ? risk*InpTPRBE    : InpTPDollarBE;
+         double _tTrl  = InpUseRMultiple ? risk*InpTPRTrail : InpTPDollarTrail;
+         double _t1    = InpUseRMultiple ? risk*InpTPR1     : InpTPDollar1;
+         double _t2    = InpUseRMultiple ? risk*InpTPR2     : InpTPDollar2;
+         double _t3    = InpUseRMultiple ? risk*InpTPR3     : InpTPDollar3;
+         double _t4    = InpUseRMultiple ? risk*InpTPR4     : InpTPDollar4;
+         double _t5    = InpUseRMultiple ? risk*InpTPR5     : InpTPDollar5;
+
+         // Breakeven SL — independent trigger at $900
+         if(!gMgBEDone[mi] && posProfit>=_tBE){
+            gMgBEDone[mi]=true;
             double beSL=(dir==1)?openP+_Point:openP-_Point;
             if((dir==1&&beSL>curSL)||(dir==-1&&beSL<curSL))
-               if(trade.PositionModify(tk,beSL,0.0))
-                  if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits));
+               trade.PositionModify(tk,NormPrice(beSL),0.0);
+            if(InpDebugExits) Print("=== BE SL @profit=",DoubleToString(posProfit,0));
          }
-         // Level 2 — close 20% + activate trailing stop
-         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR2:InpTPDollar2)){
-            gMgP2Done[mi]=true;
+         // Trailing activation — independent trigger at $1200
+         if(!gMgTrailing[mi] && posProfit>=_tTrl){
             gMgTrailing[mi]=true;
             gMgTrailSL[mi]=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
-            if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots);
-            if(InpDebugExits) Print("=== PARTIAL L2 @L2 trail ON closed ",DoubleToString(closeLots,2)," lots");
+            if(InpDebugExits) Print("=== TRAIL ON @profit=",DoubleToString(posProfit,0));
          }
-         // Level 3 — close 20%
-         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR3:InpTPDollar3)){
-            gMgP3Done[mi]=true;
-            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L3 @L3 closed ",DoubleToString(closeLots,2)," lots");
-         }
-         // Level 4 — close 20%
-         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR4:InpTPDollar4)){
-            gMgP4Done[mi]=true;
-            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L4 @L4 closed ",DoubleToString(closeLots,2)," lots");
-         }
-         // Level 2 — close 20% + activate trailing stop
-         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR5:InpTPDollar5)){
-            gMgP5Done[mi]=true;
-            gMgTrailing[mi]=true;
-            gMgTrailSL[mi]=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
-            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L5 @L5 closed ",DoubleToString(closeLots,2)," lots + trailing activated");
-         }
+         // L1 $900 — close 20%
+         if(!gMgP1Done[mi] && posProfit>=_t1){ gMgP1Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
+         // L2 $1600 — close 20%
+         else if(gMgP1Done[mi]&&!gMgP2Done[mi]&&posProfit>=_t2){ gMgP2Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
+         // L3 $3200 — close 20%
+         else if(gMgP2Done[mi]&&!gMgP3Done[mi]&&posProfit>=_t3){ gMgP3Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
+         // L4 $5500 — close 20%
+         else if(gMgP3Done[mi]&&!gMgP4Done[mi]&&posProfit>=_t4){ gMgP4Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
+         // L5 $7000 — close 20%
+         else if(gMgP4Done[mi]&&!gMgP5Done[mi]&&posProfit>=_t5){ gMgP5Done[mi]=true; if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots); }
 
-         // Trailing stop management (active after level 5)
-         if(mi>=0 && gMgTrailing[mi]){
+         // Trailing stop management — moves only in favour, never reverses
+         if(gMgTrailing[mi]){
             double newTrail=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
             bool improved=(dir==1&&newTrail>gMgTrailSL[mi])||(dir==-1&&newTrail<gMgTrailSL[mi]);
-            if(improved && ((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
+            if(improved&&((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
                gMgTrailSL[mi]=newTrail;
-               if(trade.PositionModify(tk,NormPrice(newTrail),0.0))
-                  if(InpDebugExits) Print("=== TRAIL SL moved to ",DoubleToString(newTrail,_Digits));
+               trade.PositionModify(tk,NormPrice(newTrail),0.0);
             }
          }
       }
