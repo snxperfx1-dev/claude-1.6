@@ -2629,51 +2629,36 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
          double _oc=_cmp[_own];
          cur_compRegime=_oc>=80.0?"Extreme":_oc>=55.0?"High":_oc>=30.0?"Medium":"Low";
          int _opc=_phc[_own];
-         //--- transition / location state of the owner curve ---
-         // CRITICAL: SE phase codes are SLOW. The owner may still read "Expansion" (phase 0-6)
-         // even when dominance has collapsed and lower TFs have already flipped.
-         // OVERRIDE: if owner is in expansion BUT dominance is very low → the curve is DYING
-         // regardless of what the SE phase says. Deeper engines know the truth first.
+         //--- TRANSITION STATE: derived ENTIRELY from ownership engines (not SE phase) ---
+         // Phase labels are downstream outputs. Ownership creates state.
+         // Inputs: dominance, wave progress, LTF flip count, recursion, compression, zone proximity.
          double _owDomNow = _dm[_own];
          double _owWPnow = _wpp[_own];
-         bool _owExpansionPhase = (_opc==0||_opc==1||_opc==5||_opc==6||(_opc>=2&&_opc<=4));
-         // Check if lower TFs have already flipped against the owner
          int _owDir = _dr[_own];
          int _ltfAgainstOwner = 0;
          for(int _ri=0;_ri<_own;_ri++) if(_dr[_ri]!=0 && _dr[_ri]!=_owDir) _ltfAgainstOwner++;
-         // OVERRIDE CONDITIONS: SE says expansion but dominance says DEAD
-         bool _overrideToDying = _owExpansionPhase && (_owDomNow<30.0) && (_ltfAgainstOwner>=2);
-         bool _overrideToLate  = _owExpansionPhase && (_owDomNow<45.0) && (_ltfAgainstOwner>=2) && (_owWPnow>=50.0);
-         if(_overrideToDying){
-            // Dominance collapsed + LTFs flipped → treat as TRANSITION LATE/TERMINAL regardless of SE phase
-            double _tMat = _owDomNow*0.25 + _owWPnow*0.40 + (double)_ltfAgainstOwner*15.0 + (100.0-_owDomNow)*0.20;
-            cur_transState = _tMat>=75.0 ? "TRANSITION TERMINAL" : "TRANSITION LATE";
-         } else if(_overrideToLate){
-            cur_transState = "TRANSITION MID";
-         } else if(_opc==0||_opc==1||_opc==5||_opc==6) cur_transState="BUILDING";
-         else if(_opc>=2 && _opc<=4)                            cur_transState="EXPANSION";
-         else if(_opc==7){
-            // TRANSITION MATURITY — derived from engines, not phase sequences.
-            // A curve with deep recursion + collapsing old ownership CANNOT remain "Early".
-            double _tDepthScore = fmin2(100.0, _rcc[_own]*25.0);   // recursion depth (0-4 → 0-100)
-            double _tCompScore = _cmp[_own];                        // compression (0-100)
-            double _tTransferProg = _dm[_own];                      // dominance transfer (0-100)
-            double _tExhaustion = fmin2(100.0, _wpp[_own]*0.5 + _dm[_own]*0.3 + (100.0-(100.0-_dm[_own]))*0.2);
-            double _tBudgetSpent = 100.0 - fmin2(100.0, cur_curveBudget);
-            double _tMaturity = _tDepthScore*0.25 + _tCompScore*0.20 + _tTransferProg*0.25 + _tExhaustion*0.20 + _tBudgetSpent*0.10;
-            // RECURSION OVERRIDE: deep recursion + high compression + old curve collapsing = CANNOT be early
-            if(_rcc[_own]>=3 && _cmp[_own]>=50.0 && (100.0-_dm[_own])<50.0)
-               _tMaturity = fmin2(85.0, _tMaturity+20.0);
-            // Map maturity to state label
-            cur_transState = _tMaturity>=85.0 ? "TRANSITION TERMINAL" :
-                             _tMaturity>=60.0 ? "TRANSITION LATE" :
-                             _tMaturity>=30.0 ? "TRANSITION MID" : "TRANSITION EARLY";
-         }
-         else if(_opc==8)                                       cur_transState="RETRACEMENT";
-         else if(_opc==9)                                       cur_transState="APPROACHING FLIP";
-         else if(_opc>=10 && _opc<=11)                          cur_transState="TERMINAL";
-         else if(_opc==12||_opc==13)                            cur_transState="ENTRY (Return)";
-         else                                                   cur_transState="-";
+         double _owRecDepth = _rcc[_own];
+         double _owComp = _cmp[_own];
+         bool _owAtFlip = !naf(cur_cv_flipTop[_own]) && !naf(cur_cv_flipBot[_own]) &&
+              cl<=cur_cv_flipTop[_own]*1.02 && cl>=cur_cv_flipBot[_own]*0.98;
+         // Compute transition maturity from engines (NOT from phase code)
+         double _owTransMat = _owDomNow*0.25 + _owWPnow*0.25 + (double)_ltfAgainstOwner*12.0 +
+              _owRecDepth*10.0 + _owComp*0.10 + (_owAtFlip?15.0:0.0);
+         // Recursion override: deep recursion + compressed + old dom collapsed = CANNOT be early
+         if(_owRecDepth>=3 && _owComp>=50.0 && (100.0-_owDomNow)<50.0)
+            _owTransMat = fmin2(90.0, _owTransMat+20.0);
+         // State from maturity (ownership-driven, not phase-driven)
+         if(_owTransMat>=85.0)                                  cur_transState="TRANSITION TERMINAL";
+         else if(_owTransMat>=60.0 || (_owDomNow<30.0 && _ltfAgainstOwner>=2)) cur_transState="TRANSITION LATE";
+         else if(_owTransMat>=35.0 || (_owDomNow<45.0 && _ltfAgainstOwner>=1)) cur_transState="TRANSITION MID";
+         else if(_owWPnow<25.0 && _owDomNow>65.0)              cur_transState="BUILDING";
+         else if(_owWPnow<50.0 && _owDomNow>50.0)              cur_transState="EXPANSION";
+         else                                                    cur_transState="TRANSITION EARLY";
+         // Zone-specific overrides (at flip = terminal context regardless of maturity)
+         if(_owAtFlip && _owTransMat>=40.0)                     cur_transState="APPROACHING FLIP";
+         if(_owAtFlip && _owTransMat>=60.0)                     cur_transState="TERMINAL";
+         // Return detection: a rung is confirmed in Return phase
+         if(_anyRungInReturn && _owDomNow>=40.0)                cur_transState="ENTRY (Return)";
 
          //--- ENTRY SCAN: a FRESH Return (12/13) on any rung is a candidate ---
          cur_mtfEntryDir=0; cur_mtfEntryFresh=false; cur_mtfEntryWt=0; cur_mtfEntryInv=NA; cur_mtfEntryTF="-"; cur_mtfEntryDom=0.0;
