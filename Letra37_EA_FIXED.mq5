@@ -2630,7 +2630,27 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
          cur_compRegime=_oc>=80.0?"Extreme":_oc>=55.0?"High":_oc>=30.0?"Medium":"Low";
          int _opc=_phc[_own];
          //--- transition / location state of the owner curve ---
-         if(_opc==0||_opc==1||_opc==5||_opc==6)                cur_transState="BUILDING";       // origin/expansion/new high-low
+         // CRITICAL: SE phase codes are SLOW. The owner may still read "Expansion" (phase 0-6)
+         // even when dominance has collapsed and lower TFs have already flipped.
+         // OVERRIDE: if owner is in expansion BUT dominance is very low → the curve is DYING
+         // regardless of what the SE phase says. Deeper engines know the truth first.
+         double _owDomNow = _dm[_own];
+         double _owWPnow = _wpp[_own];
+         bool _owExpansionPhase = (_opc==0||_opc==1||_opc==5||_opc==6||(_opc>=2&&_opc<=4));
+         // Check if lower TFs have already flipped against the owner
+         int _owDir = _dr[_own];
+         int _ltfAgainstOwner = 0;
+         for(int _ri=0;_ri<_own;_ri++) if(_dr[_ri]!=0 && _dr[_ri]!=_owDir) _ltfAgainstOwner++;
+         // OVERRIDE CONDITIONS: SE says expansion but dominance says DEAD
+         bool _overrideToDying = _owExpansionPhase && (_owDomNow<30.0) && (_ltfAgainstOwner>=2);
+         bool _overrideToLate  = _owExpansionPhase && (_owDomNow<45.0) && (_ltfAgainstOwner>=2) && (_owWPnow>=50.0);
+         if(_overrideToDying){
+            // Dominance collapsed + LTFs flipped → treat as TRANSITION LATE/TERMINAL regardless of SE phase
+            double _tMat = _owDomNow*0.25 + _owWPnow*0.40 + (double)_ltfAgainstOwner*15.0 + (100.0-_owDomNow)*0.20;
+            cur_transState = _tMat>=75.0 ? "TRANSITION TERMINAL" : "TRANSITION LATE";
+         } else if(_overrideToLate){
+            cur_transState = "TRANSITION MID";
+         } else if(_opc==0||_opc==1||_opc==5||_opc==6) cur_transState="BUILDING";
          else if(_opc>=2 && _opc<=4)                            cur_transState="EXPANSION";
          else if(_opc==7){
             // TRANSITION MATURITY — derived from engines, not phase sequences.
