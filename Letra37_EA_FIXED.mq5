@@ -1839,12 +1839,15 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // The perfect sell had dom=100%. We require 75% minimum on a meaningful rung.
    bool _highDomM5plus = _inl_dom_m5>=75.0 || _inl_dom_m15>=75.0 || _inl_dom_h1>=75.0;
 
-   // GATE 3: MULTI-TF ALIGNMENT — at least 3 of 4 key TFs (M5, M15, H1, H4) agree
-   // The perfect sell had M1+M5+H1+H4 all bearish. We require 3+ aligned.
-   int _tfAlignLong  = (l0_dir==1?1:0)+(l1_dir==1?1:0)+(l2_dir==1?1:0)+(l4_dir==1?1:0);
-   int _tfAlignShort = (l0_dir==-1?1:0)+(l1_dir==-1?1:0)+(l2_dir==-1?1:0)+(l4_dir==-1?1:0);
-   bool _multiTfLong  = _tfAlignLong >= 3;
-   bool _multiTfShort = _tfAlignShort >= 3;
+   // GATE 3: MULTI-TF ALIGNMENT — calibrated for BOTH scenarios:
+   //   A) Strong: 3+ of 6 TFs aligned (clear directional consensus)
+   //   B) Anticipatory: 2+ TFs aligned + high dominance (transition completing, HTFs about to flip)
+   // The good sell at H1 supply had: M1+M5 bearish (2) + dom=89% = anticipatory entry BEFORE H1/H4 flip
+   // Include ALL rungs (M1,M3,M5,M15,H1,H4) for full picture
+   int _tfAlignLong  = (m1_dir==1?1:0)+(l3_dir==1?1:0)+(l0_dir==1?1:0)+(l1_dir==1?1:0)+(l2_dir==1?1:0)+(l4_dir==1?1:0);
+   int _tfAlignShort = (m1_dir==-1?1:0)+(l3_dir==-1?1:0)+(l0_dir==-1?1:0)+(l1_dir==-1?1:0)+(l2_dir==-1?1:0)+(l4_dir==-1?1:0);
+   bool _multiTfLong  = (_tfAlignLong >= 3) || (_tfAlignLong >= 2 && _highDomM5plus);
+   bool _multiTfShort = (_tfAlignShort >= 3) || (_tfAlignShort >= 2 && _highDomM5plus);
 
    // GATE 4: TERMINAL SEQUENCE — must be in terminal phases or Return (not early expansion/retracement)
    bool _anyRungInReturn = (_inl_ph_m1==12||_inl_ph_m1==13)||(_inl_ph_m3==12||_inl_ph_m3==13)||
