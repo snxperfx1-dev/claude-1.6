@@ -2988,6 +2988,10 @@ void ResetState()
    g_tradeDir=0;g_exitFiredBar=-1;g_prevEnergy=0;g_prevDirection=0;g_prevEntryCycle=0;g_prev_ede_state=0;g_prev_LBD=false;
    g_huntMode=0;g_huntActivatedBar=-1;g_huntDemandHi=NA;g_huntDemandLo=NA;
    cur_ownerDeathSignals=0;
+   ArrayFree(gMgTicket);ArrayFree(gMgInitSL);ArrayFree(gMgTP1);ArrayFree(gMgPartialDone);ArrayFree(gMgBEDone);ArrayFree(gMgDir);
+   ArrayFree(gMgP1Done);ArrayFree(gMgP2Done);ArrayFree(gMgP3Done);ArrayFree(gMgP4Done);ArrayFree(gMgP5Done);
+   ArrayFree(gMgTrailing);ArrayFree(gMgTrailSL);
+   ArrayFree(gMgEntryTime);ArrayFree(gMgMFE);ArrayFree(gMgMAE);ArrayFree(gMgQProtMode);ArrayFree(gMgQExit50);
    ArrayFree(g_fu_top);ArrayFree(g_fu_bot);ArrayFree(g_fu_birthBar);ArrayFree(g_fu_dir);ArrayFree(g_fu_state);
    g_fuw_tip=NA;g_fuw_bodyHigh=NA;g_fuw_bodyLow=NA;g_fuw_mid=NA;g_fuw_mid38=NA;g_fuw_mid62=NA;g_fuw_dir=0;g_fuw_leftPool=NA;g_fuw_bar=-1;g_fuw_valid=false;g_fuw_strength=NA;
    g_afe_step=0;g_afe_origin=NA;g_afe_originDir=0;g_afe_upperFlip=NA;g_afe_lowerFlip=NA;g_afe_upperFlipRole="-";g_afe_activeDest=NA;g_afe_target=NA;g_afe_selfReturnDone=false;g_afe_continuation=false;
@@ -3796,6 +3800,13 @@ input bool   InpRequireMomFlip     = true; // Require the bar-to-bar momentum DE
 input double InpEntryRetrMin       = 0.30; // Continuation entries: min retracement fraction of the leg (SYMPHONY 0.30)
 input double InpEntryRetrMax       = 0.80; // Continuation entries: max retracement fraction (beyond = too deep -> skip)
 
+input group "Letra37 EA - 30-Min Trade Quality Protection"
+input bool   InpQProtEnabled    = true;  // Enable 30-min quality protection rule (tightens SL when trade stalls)
+input int    InpQProtMinutes    = 30;    // Age (minutes) without L1 hit -> activate protection mode
+input int    InpQEscalMinutes   = 45;    // Age (minutes) without L1 hit -> escalation partial close
+input double InpQProtSLFrac     = 0.25; // Protection SL = entry - this * initialRisk  (e.g. 0.25R closer)
+input bool   InpQEscalHalf      = true;  // TRUE=close 50% at escalation, FALSE=close 100%
+
 //==================================================================
 // EA GLOBALS
 //==================================================================
@@ -3824,6 +3835,12 @@ bool   gMgP4Done[];  // $6400 -- 20% close
 bool   gMgP5Done[];  // $8600 -- 20% close + activate trailing stop
 bool   gMgTrailing[];// trailing stop active (after $8600 hit)
 double gMgTrailSL[]; // last trailing SL price
+//--- 30-min quality protection per-ticket state ---
+datetime gMgEntryTime[];  // wall-clock time of entry (for minute-age)
+double   gMgMFE[];        // max favorable excursion in R (updated every tick)
+double   gMgMAE[];        // max adverse excursion in R  (updated every tick)
+bool     gMgQProtMode[];  // protection mode active (30-min triggered)
+bool     gMgQExit50[];    // escalation 50% partial already done (45-min)
 
 //==================================================================
 // HELPERS
@@ -3909,9 +3926,14 @@ void MgRegister(const ulong tk,const double initSL,const double tp1,const int di
    ArrayResize(gMgTicket,s+1);ArrayResize(gMgInitSL,s+1);ArrayResize(gMgTP1,s+1);ArrayResize(gMgPartialDone,s+1);ArrayResize(gMgBEDone,s+1);ArrayResize(gMgDir,s+1);
    ArrayResize(gMgP1Done,s+1);ArrayResize(gMgP2Done,s+1);ArrayResize(gMgP3Done,s+1);ArrayResize(gMgP4Done,s+1);ArrayResize(gMgP5Done,s+1);
    ArrayResize(gMgTrailing,s+1);ArrayResize(gMgTrailSL,s+1);
+   ArrayResize(gMgEntryTime,s+1);ArrayResize(gMgMFE,s+1);ArrayResize(gMgMAE,s+1);
+   ArrayResize(gMgQProtMode,s+1);ArrayResize(gMgQExit50,s+1);
    gMgTicket[s]=tk; gMgInitSL[s]=initSL; gMgTP1[s]=tp1; gMgPartialDone[s]=false; gMgBEDone[s]=false; gMgDir[s]=dir;
    gMgP1Done[s]=false; gMgP2Done[s]=false; gMgP3Done[s]=false; gMgP4Done[s]=false; gMgP5Done[s]=false;
    gMgTrailing[s]=false; gMgTrailSL[s]=0.0;
+   // quality protection initial state
+   gMgEntryTime[s]=TimeCurrent(); gMgMFE[s]=0.0; gMgMAE[s]=0.0;
+   gMgQProtMode[s]=false; gMgQExit50[s]=false;
 }
 void MgCleanup()
 {
@@ -3920,6 +3942,8 @@ void MgCleanup()
          ArrayRemove(gMgTicket,q,1);ArrayRemove(gMgInitSL,q,1);ArrayRemove(gMgTP1,q,1);ArrayRemove(gMgPartialDone,q,1);ArrayRemove(gMgBEDone,q,1);ArrayRemove(gMgDir,q,1);
          ArrayRemove(gMgP1Done,q,1);ArrayRemove(gMgP2Done,q,1);ArrayRemove(gMgP3Done,q,1);ArrayRemove(gMgP4Done,q,1);ArrayRemove(gMgP5Done,q,1);
          ArrayRemove(gMgTrailing,q,1);ArrayRemove(gMgTrailSL,q,1);
+         ArrayRemove(gMgEntryTime,q,1);ArrayRemove(gMgMFE,q,1);ArrayRemove(gMgMAE,q,1);
+         ArrayRemove(gMgQProtMode,q,1);ArrayRemove(gMgQExit50,q,1);
       }
    }
 }
@@ -4632,6 +4656,96 @@ void ManagePositions()
       double initSL=(mi>=0?gMgInitSL[mi]:curSL);
       double risk  =MathAbs(openP-initSL); if(risk<=0 || initSL<=0) risk=atr;
       double rMult =(dir==1?(mkt-openP):(openP-mkt))/risk;
+
+      //==============================================================
+      // 30-MIN TRADE QUALITY PROTECTION
+      // Log: tracks the original spec entry time in MgRegister.
+      // Protection fires at 30 min (no L1 yet): tighten SL.
+      // Escalation fires at 45 min (no L1 yet): close 50% or 100%.
+      //==============================================================
+      if(InpQProtEnabled && mi>=0){
+         // -- continuously update MFE / MAE (in R) --
+         double excursion=(dir==1?(mkt-openP):(openP-mkt));
+         double rNow=(risk>0)?excursion/risk:0.0;
+         if(rNow>gMgMFE[mi]) gMgMFE[mi]=rNow;
+         if((-rNow)>gMgMAE[mi]) gMgMAE[mi]=-rNow;
+
+         // trade age in minutes
+         int ageMin=(int)((TimeCurrent()-gMgEntryTime[mi])/60);
+
+         // -- QUALITY LOG: emit once per bar when protection is relevant --
+         bool logBar=(heldBars>=1 && ageMin>=InpQProtMinutes && !gMgP1Done[mi]);
+         if(logBar){
+            string qLog="QUALITY: AgeMin="+IntegerToString(ageMin)+
+                         " L1Hit="+(gMgP1Done[mi]?"Y":"N")+
+                         " MFE="+DoubleToString(gMgMFE[mi],2)+"R"+
+                         " MAE="+DoubleToString(gMgMAE[mi],2)+"R"+
+                         " ProtMode="+(gMgQProtMode[mi]?"Y":"N")+
+                         " #"+IntegerToString((int)tk);
+            if(InpDebugExits) Print(qLog);
+         }
+
+         // -- PROTECTION MODE: age >= 30 min, L1 not yet hit --
+         if(ageMin>=InpQProtMinutes && !gMgP1Done[mi]){
+            if(!gMgQProtMode[mi]){
+               gMgQProtMode[mi]=true;
+               if(InpDebugExits) Print("=== QPROT ON #",tk," age=",ageMin,"m  MFE=",
+                  DoubleToString(gMgMFE[mi],2),"R MAE=",DoubleToString(gMgMAE[mi],2),"R");
+            }
+            // Compute protection SL = entry +/- (InpQProtSLFrac * initial risk)
+            double protDist=InpQProtSLFrac*risk;
+            double protSL=(dir==1)?(openP-protDist):(openP+protDist);
+            // Swing-based component: min/max of last 3 closed bars
+            double swingLevel=(dir==1)?DBL_MAX:-DBL_MAX;
+            for(int bb=1;bb<=3;bb++){
+               if(dir==1){
+                  double lo=iLow(_Symbol,_Period,bb);
+                  if(lo>0 && lo<swingLevel) swingLevel=lo;
+               } else {
+                  double hi=iHigh(_Symbol,_Period,bb);
+                  if(hi>0 && hi>swingLevel) swingLevel=hi;
+               }
+            }
+            if(swingLevel==DBL_MAX || swingLevel==-DBL_MAX) swingLevel=protSL; // fallback
+            // Apply: most conservative of the two (moves SL in favour direction only)
+            double newSL;
+            if(dir==1) newSL=NormPrice(MathMax(protSL,MathMin(swingLevel,openP)));
+            else       newSL=NormPrice(MathMin(protSL,MathMax(swingLevel,openP)));
+            // Only move SL if it improves on current (never widens)
+            bool improve=(dir==1&&newSL>curSL)||(dir==-1&&newSL<curSL);
+            if(improve){
+               double minD=MinStopDist()+_Point;
+               bool sideOK=(dir==1?newSL<mkt-minD:newSL>mkt+minD);
+               if(sideOK && trade.PositionModify(tk,newSL,0.0)){
+                  curSL=newSL;
+                  if(InpDebugExits) Print("=== QPROT SL -> ",DoubleToString(newSL,_Digits),
+                     "  (prot=",DoubleToString(protSL,_Digits),
+                     " swing=",DoubleToString(swingLevel,_Digits),")  #",tk);
+               }
+            }
+         }
+
+         // -- ESCALATION: age >= 45 min, L1 still not hit --
+         if(ageMin>=InpQEscalMinutes && !gMgP1Done[mi] && !gMgQExit50[mi]){
+            gMgQExit50[mi]=true;
+            double escalLots=(InpQEscalHalf)?NormalizeLot(posLots*0.50):posLots;
+            double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
+            if(escalLots<minLot) escalLots=minLot;
+            if(escalLots>=posLots){
+               // full exit
+               DbgExit("QPROT-escalation-full (age="+IntegerToString(ageMin)+"m, L1 not hit)",
+                       tk,dir,openP,mkt,rMult);
+               if(!trade.PositionClose(tk) && MktClosed()) return;
+               continue;
+            } else {
+               // partial: close 50%, keep trailing the rest
+               if(trade.PositionClosePartial(tk,escalLots) && InpDebugExits)
+                  Print("=== QPROT PARTIAL 50% age=",ageMin,"m  R=",
+                        DoubleToString(rMult,2)," MFE=",DoubleToString(gMgMFE[mi],2),
+                        "R MAE=",DoubleToString(gMgMAE[mi],2),"R  #",tk);
+            }
+         }
+      } // end quality protection block
 
       //==============================================================
       // PROFIT MANAGEMENT -- 5 levels, 20% each
