@@ -1007,6 +1007,22 @@ double cur_entryProb=0.0;      // entry-cycle probability %
 double cur_distFlipAtr=0.0;    // distance to HTF flip/objective in ATR
 //--- MULTI-CURVE FLIP CONTEXT (stored for EA TryEnter access) ---
 double cur_ctxFlipTop=NA, cur_ctxFlipBot=NA, cur_ctxFlipMid=NA;
+//--- PER-TIMEFRAME CURVE CONTEXT (ported from V60 — origin→extreme→flip per curve) ---
+// Each curve on each TF has: origin (seN_inv), extreme (swing hi/lo), flip zone (seN_ft/fb)
+// The algo uses ALL of these to know which curves it's working within.
+struct CurveCtx {
+   int    dir;        // wave direction on this rung
+   double origin;     // curve birth / invalidation (seN_inv)
+   double extreme;    // structural peak (bull) or trough (bear)
+   double flipTop;    // flip zone top (seN_ft)
+   double flipBot;    // flip zone bottom (seN_fb)
+   double flipMid;    // flip zone midpoint
+   double wp;         // wave progress %
+   double dom;        // dominance transfer %
+   double comp;       // compression %
+   int    phase;      // phase code
+};
+CurveCtx cur_curves[6];  // [0]=M1, [1]=M3, [2]=M5, [3]=M15, [4]=H1, [5]=H4
 //--- prev-bar phase code per rung (persist across recomputes; NOT reset by ResetState) ---
 int    gPrevPhM1=-1,gPrevPhM3=-1,gPrevPhM5=-1,gPrevPhM15=-1,gPrevPhH1=-1,gPrevPhH4=-1;
 string cur_l0phase,cur_l1phase,cur_l2phase,cur_l3phase,cur_l4phase;
@@ -1906,6 +1922,44 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _flipCtxAllowShort = naf(_ctx_flipMid) || (cl >= _ctx_flipMid - atr*0.3);
    // Store for EA TryEnter() access
    cur_ctxFlipTop=_ctx_ft; cur_ctxFlipBot=_ctx_fb; cur_ctxFlipMid=_ctx_flipMid;
+   // --- POPULATE PER-TIMEFRAME CURVE CONTEXT (V60 port: origin→extreme→flip per curve) ---
+   // Each curve knows: where it was born, where its peak/trough is, and its flip zone.
+   // This gives the algo full awareness of which curves it's working within.
+   cur_curves[0].dir=m1_dir; cur_curves[0].origin=se1_inv;
+   cur_curves[0].extreme=(m1_dir==1?nz(MapVal(se1.t,se1.sh,se1.n,ct)):m1_dir==-1?nz(MapVal(se1.t,se1.sl,se1.n,ct)):NA);
+   cur_curves[0].flipTop=MapVal(se1.t,se1.ft,se1.n,ct); cur_curves[0].flipBot=MapVal(se1.t,se1.fb,se1.n,ct);
+   cur_curves[0].flipMid=(!naf(cur_curves[0].flipTop)&&!naf(cur_curves[0].flipBot))?(cur_curves[0].flipTop+cur_curves[0].flipBot)/2.0:NA;
+   cur_curves[0].wp=nz(MapVal(se1.t,se1.wp,se1.n,ct)); cur_curves[0].dom=_inl_dom_m1; cur_curves[0].comp=nz(MapVal(se1.t,se1.comp,se1.n,ct)); cur_curves[0].phase=_inl_ph_m1;
+
+   cur_curves[1].dir=l3_dir; cur_curves[1].origin=se3_inv;
+   cur_curves[1].extreme=(l3_dir==1?nz(MapVal(se3.t,se3.sh,se3.n,ct)):l3_dir==-1?nz(MapVal(se3.t,se3.sl,se3.n,ct)):NA);
+   cur_curves[1].flipTop=MapVal(se3.t,se3.ft,se3.n,ct); cur_curves[1].flipBot=MapVal(se3.t,se3.fb,se3.n,ct);
+   cur_curves[1].flipMid=(!naf(cur_curves[1].flipTop)&&!naf(cur_curves[1].flipBot))?(cur_curves[1].flipTop+cur_curves[1].flipBot)/2.0:NA;
+   cur_curves[1].wp=nz(MapVal(se3.t,se3.wp,se3.n,ct)); cur_curves[1].dom=_inl_dom_m3; cur_curves[1].comp=nz(MapVal(se3.t,se3.comp,se3.n,ct)); cur_curves[1].phase=_inl_ph_m3;
+
+   cur_curves[2].dir=l0_dir; cur_curves[2].origin=se5_inv;
+   cur_curves[2].extreme=(l0_dir==1?nz(se5_sh):l0_dir==-1?nz(se5_sl):NA);
+   cur_curves[2].flipTop=MapVal(se5.t,se5.ft,se5.n,ct); cur_curves[2].flipBot=MapVal(se5.t,se5.fb,se5.n,ct);
+   cur_curves[2].flipMid=(!naf(cur_curves[2].flipTop)&&!naf(cur_curves[2].flipBot))?(cur_curves[2].flipTop+cur_curves[2].flipBot)/2.0:NA;
+   cur_curves[2].wp=nz(se5_wp); cur_curves[2].dom=_inl_dom_m5; cur_curves[2].comp=nz(MapVal(se5.t,se5.comp,se5.n,ct)); cur_curves[2].phase=_inl_ph_m5;
+
+   cur_curves[3].dir=l1_dir; cur_curves[3].origin=se15_inv;
+   cur_curves[3].extreme=(l1_dir==1?nz(MapVal(se15.t,se15.sh,se15.n,ct)):l1_dir==-1?nz(MapVal(se15.t,se15.sl,se15.n,ct)):NA);
+   cur_curves[3].flipTop=MapVal(se15.t,se15.ft,se15.n,ct); cur_curves[3].flipBot=MapVal(se15.t,se15.fb,se15.n,ct);
+   cur_curves[3].flipMid=(!naf(cur_curves[3].flipTop)&&!naf(cur_curves[3].flipBot))?(cur_curves[3].flipTop+cur_curves[3].flipBot)/2.0:NA;
+   cur_curves[3].wp=nz(se15_wp); cur_curves[3].dom=_inl_dom_m15; cur_curves[3].comp=nz(MapVal(se15.t,se15.comp,se15.n,ct)); cur_curves[3].phase=_inl_ph_m15;
+
+   cur_curves[4].dir=l2_dir; cur_curves[4].origin=se60_inv;
+   cur_curves[4].extreme=(l2_dir==1?nz(MapVal(se60.t,se60.sh,se60.n,ct)):l2_dir==-1?nz(MapVal(se60.t,se60.sl,se60.n,ct)):NA);
+   cur_curves[4].flipTop=MapVal(se60.t,se60.ft,se60.n,ct); cur_curves[4].flipBot=MapVal(se60.t,se60.fb,se60.n,ct);
+   cur_curves[4].flipMid=(!naf(cur_curves[4].flipTop)&&!naf(cur_curves[4].flipBot))?(cur_curves[4].flipTop+cur_curves[4].flipBot)/2.0:NA;
+   cur_curves[4].wp=nz(se60_wp); cur_curves[4].dom=_inl_dom_h1; cur_curves[4].comp=nz(MapVal(se60.t,se60.comp,se60.n,ct)); cur_curves[4].phase=_inl_ph_h1;
+
+   cur_curves[5].dir=l4_dir; cur_curves[5].origin=se240_inv;
+   cur_curves[5].extreme=(l4_dir==1?nz(MapVal(se240.t,se240.sh,se240.n,ct)):l4_dir==-1?nz(MapVal(se240.t,se240.sl,se240.n,ct)):NA);
+   cur_curves[5].flipTop=MapVal(se240.t,se240.ft,se240.n,ct); cur_curves[5].flipBot=MapVal(se240.t,se240.fb,se240.n,ct);
+   cur_curves[5].flipMid=(!naf(cur_curves[5].flipTop)&&!naf(cur_curves[5].flipBot))?(cur_curves[5].flipTop+cur_curves[5].flipBot)/2.0:NA;
+   cur_curves[5].wp=nz(MapVal(se240.t,se240.wp,se240.n,ct)); cur_curves[5].dom=nz(MapVal(se240.t,se240.dom,se240.n,ct)); cur_curves[5].comp=nz(MapVal(se240.t,se240.comp,se240.n,ct)); cur_curves[5].phase=(int)nz(se240_ph);
 
    // GATE 7: MACRO DIRECTION AUTHORITY — prevents counter-HTF garbage
    // The spec says: "Which curve currently owns price?" The HTF curve determines direction.
@@ -4014,13 +4068,27 @@ void TryEnter()
    //--- entry-cycle (that is exactly when we trade the new curve against the old consensus). ---
 
    //--- FLIP CONTEXT GATE (applies to ALL entry paths including FU/MTF/aggressive) ---
-   //  BUYS only below flip zone midpoint. SELLS only above flip zone midpoint.
-   //  This is the universal rule: each curve has flipzone + supply (above) or flipzone + demand (below).
-   if(!naf(cur_ctxFlipMid)){
+   //  Ported from V60: ALL curves have a flip zone. BUYS below, SELLS above.
+   //  Check ALL 6 timeframe curves — use the NEAREST relevant flip zone to current price.
+   //  The algo now has full awareness of which curves it's working within.
+   {
       double _bid=SymbolInfoDouble(_Symbol,SYMBOL_BID);
       double _atrGate=cur_atr>0?cur_atr:10*_Point;
-      if(dir==1 && _bid>cur_ctxFlipMid+_atrGate*0.3){ gEntryBlock="buy ABOVE flip zone (sell territory)"; return; }
-      if(dir==-1 && _bid<cur_ctxFlipMid-_atrGate*0.3){ gEntryBlock="sell BELOW flip zone (buy territory)"; return; }
+      // Find the nearest flip zone from all curves (closest to price = most relevant context)
+      double _nearestFlipMid=NA; double _nearestDist=DBL_MAX;
+      for(int _ci=0;_ci<6;_ci++){
+         if(!naf(cur_curves[_ci].flipMid)){
+            double _d=MathAbs(_bid-cur_curves[_ci].flipMid);
+            if(_d<_nearestDist){ _nearestDist=_d; _nearestFlipMid=cur_curves[_ci].flipMid; }
+         }
+      }
+      // Fallback to the primary HTF context
+      if(naf(_nearestFlipMid)) _nearestFlipMid=cur_ctxFlipMid;
+      // Apply the universal rule from all curves
+      if(!naf(_nearestFlipMid)){
+         if(dir==1 && _bid>_nearestFlipMid+_atrGate*0.3){ gEntryBlock="buy ABOVE flip zone (sell territory)"; return; }
+         if(dir==-1 && _bid<_nearestFlipMid-_atrGate*0.3){ gEntryBlock="sell BELOW flip zone (buy territory)"; return; }
+      }
    }
 
    if(InpBlockCounterBias && !_terminalEntry){
