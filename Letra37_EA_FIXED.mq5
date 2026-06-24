@@ -1459,7 +1459,12 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    //==============================================================
    bool _liqgRetr=ie1a_currentPhase=="Retracement Induction";
    bool _liqgArm =ie1a_currentPhase=="Expansion Induction"||_liqgRetr;
-   double _liqgObj=se5_tgt;
+   // OWNER-DRIVEN DESTINATION: liqg target uses OWNER's destination, not local se5_tgt
+   // Priority: H4 target > H1 target > M15 target > M5 target (owner curve hierarchy)
+   double _liqgObj=MapVal(se240.t,se240.tgt,se240.n,ct);
+   if(naf(_liqgObj)) _liqgObj=MapVal(se60.t,se60.tgt,se60.n,ct);
+   if(naf(_liqgObj)) _liqgObj=MapVal(se15.t,se15.tgt,se15.n,ct);
+   if(naf(_liqgObj)) _liqgObj=se5_tgt;
    if(_liqgArm && !g_liqg_active && !naf(_liqgObj)){
       g_liqg_active=true; g_liqg_isRetr=_liqgRetr; g_liqg_target=_liqgObj;
       g_liqg_dir=_liqgObj>cl?1:-1; g_liqg_initDist=fmax2(MathAbs(_liqgObj-cl),atr*0.5);
@@ -2096,12 +2101,39 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Small capacity = compressed or close = failure swing + immediate entry
    double _geCapacity = fmin2(100.0, _geDistTarget*15.0 * (1.0-_hoeComp/200.0) / fmax2(_geConvexWidth, 0.4));
 
-   // ─── ENGINE 4: RECURSION FORECAST (RFE) ──────────────────────────
-   // Probabilistic forecast of future loops based on geometry.
+   // ─── ENGINE 4: RECURSIVE FORECAST (RFE) — PREDICTIVE ────────────
+   // Forecasts future loops from GEOMETRY (not thresholds).
+   // Inputs: distance + compression + velocity + convexity + curvature
+   // Outputs: expectedLoops, failureSwingProb, immediateExecProb
    int    _rfeExpectedLoops = (int)fmin2(5.0, fmax2(0.0, MathRound(_geDistTarget/_geConvexWidth)));
-   double _rfeLargeProb = fmin2(100.0, _geCapacity*0.8 * (1.0-_hoeComp/100.0));
-   double _rfeFailSwingProb = fmin2(100.0, fmax2(0.0, _hoeComp*0.8 + (100.0-_geCapacity)*0.4));
-   double _rfeImmediateProb = fmin2(100.0, fmax2(0.0, _rfeFailSwingProb*0.7 + _geApproachSpeed*0.3 + (_oteMaturity>60?20.0:0.0)));
+   // Large loops need: low compression + large distance + slow approach
+   double _rfeLargeProb = fmin2(100.0, fmax2(0.0, _geCapacity*0.5 * (1.0-_hoeComp/100.0) * (1.0-_geApproachSpeed/200.0)));
+   // Failure swing: high compression + small distance + fast approach + high curvature
+   double _rfeFailSwingProb = fmin2(100.0, fmax2(0.0,
+      _hoeComp*0.35 +                                    // high compression → failure swing
+      (100.0-_geCapacity)*0.25 +                          // small remaining space → failure swing
+      _geApproachSpeed*0.20 +                             // fast approach → failure swing
+      fmin2(30.0, MathAbs(convSmooth)/fmax2(atr*convMult,1e-10)*10.0))); // high curvature → failure swing
+   // Immediate execution: when all geometry says "no room for more loops"
+   double _rfeImmediateProb = fmin2(100.0, fmax2(0.0,
+      _rfeFailSwingProb*0.40 +                            // failure swing likely = entry close
+      _geApproachSpeed*0.20 +                             // approaching fast
+      (_oteMaturity>60?25.0:_oteMaturity>40?15.0:0.0) +  // transfer advanced
+      (_geDistTarget<2.0?20.0:_geDistTarget<4.0?10.0:0.0) + // very close to target
+      (g_nearFlipzone?15.0:0.0)));                        // already at zone
+   // Exhaustion probability: how likely the current curve is dying
+   double _rfeExhaustProb = fmin2(100.0, fmax2(0.0,
+      _hoeWP*0.40 +                                       // high maturity = exhausting
+      (100.0-_hoeDom)*0.30 +                              // low dominance = losing control
+      (_geApproachSpeed<20?20.0:0.0)));                    // velocity dying
+
+   // ─── CURVE EXHAUSTION ENGINE (CEE) ───────────────────────────────
+   // Transitions finish because curves exhaust, not because phases end.
+   // Transfer completes when newCurveEnergy > oldCurveEnergy AND old exhausted.
+   double _ceeOldEnergy = fmax2(0.0, 100.0 - _oteMaturity);  // old curve's remaining energy
+   double _ceeNewEnergy = _oteMaturity;                        // new curve's growing energy
+   double _ceeExhaustProgress = fmin2(100.0, _hoeWP*0.5 + (100.0-_ceeOldEnergy)*0.3 + _rfeExhaustProb*0.2);
+   bool   _ceeTransferComplete = _ceeNewEnergy > _ceeOldEnergy && _ceeExhaustProgress >= 60.0;
 
    // ─── ENGINE 5: CURVE MATURITY (CME) ──────────────────────────────
    // Everything is probabilistic. No binary EntryActive.
@@ -2127,24 +2159,32 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
                         _cmeEntryProb>=35 ? 2 :   // PREPARING
                         _cmeEntryProb>=15 ? 1 : 0; // BUILDING / TOO_EARLY
 
-   // ─── ENGINE 6: DYNAMIC DESTINATION (DDE) ─────────────────────────
-   // Target = owner's destination. Escalates on ownership change.
-   // NOT entry TF's opposite flip. The OWNER's demand/supply.
+   // ─── ENGINE 6: OWNER-DRIVEN DESTINATION (ODDE) + TARGET EXTENSION ─
+   // Target = OWNER's demand/supply. NOT entry TF.
+   // Escalates on ownership change: H4→D1→W1 (target extends automatically).
    double _ddeTarget=NA; int _ddeTargetTF=-1;
    if(_hoeDir==-1){
-      // Bearish owner → destination = demand below
+      // Bearish owner → destination = demand below (bullish curve's flip below price)
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
             _ddeTarget=cur_cv_flipTop[_ti]; _ddeTargetTF=_ti; break;
          }
       }
+      // Fallback: owner's origin (where the bearish wave started from)
       if(naf(_ddeTarget)){
          double _owOrig=(_hoeOwnerIdx>=0?cur_cv_origin[_hoeOwnerIdx]:NA);
          if(!naf(_owOrig)&&_owOrig<cl){ _ddeTarget=_owOrig; _ddeTargetTF=_hoeOwnerIdx; }
-         else if(!naf(se5_tgt)&&se5_tgt<cl){ _ddeTarget=se5_tgt; _ddeTargetTF=2; }
+         // Last fallback: highest available TF target going DOWN
+         else {
+            double _h4t=MapVal(se240.t,se240.tgt,se240.n,ct);
+            double _h1t=MapVal(se60.t,se60.tgt,se60.n,ct);
+            if(!naf(_h4t)&&_h4t<cl){ _ddeTarget=_h4t; _ddeTargetTF=5; }
+            else if(!naf(_h1t)&&_h1t<cl){ _ddeTarget=_h1t; _ddeTargetTF=4; }
+            else if(!naf(se5_tgt)&&se5_tgt<cl){ _ddeTarget=se5_tgt; _ddeTargetTF=2; }
+         }
       }
    } else if(_hoeDir==1){
-      // Bullish owner → destination = supply above
+      // Bullish owner → destination = supply above (bearish curve's flip above price)
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
             _ddeTarget=cur_cv_flipBot[_ti]; _ddeTargetTF=_ti; break;
@@ -2153,32 +2193,54 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
       if(naf(_ddeTarget)){
          double _owExt=(_hoeOwnerIdx>=0?cur_cv_extreme[_hoeOwnerIdx]:NA);
          if(!naf(_owExt)&&_owExt>cl){ _ddeTarget=_owExt; _ddeTargetTF=_hoeOwnerIdx; }
-         else if(!naf(se5_tgt)&&se5_tgt>cl){ _ddeTarget=se5_tgt; _ddeTargetTF=2; }
+         else {
+            double _h4t=MapVal(se240.t,se240.tgt,se240.n,ct);
+            double _h1t=MapVal(se60.t,se60.tgt,se60.n,ct);
+            if(!naf(_h4t)&&_h4t>cl){ _ddeTarget=_h4t; _ddeTargetTF=5; }
+            else if(!naf(_h1t)&&_h1t>cl){ _ddeTarget=_h1t; _ddeTargetTF=4; }
+            else if(!naf(se5_tgt)&&se5_tgt>cl){ _ddeTarget=se5_tgt; _ddeTargetTF=2; }
+         }
+      }
+   }
+   // TARGET EXTENSION: if current target TF < owner TF, the target should be on the owner's level
+   // This ensures H1 entry targeting H4 demand (not H1 demand)
+   if(_ddeTargetTF>=0 && _hoeOwnerIdx>=0 && _ddeTargetTF<_hoeOwnerIdx){
+      // Target is on a lower TF than the owner — try to extend to owner's level
+      if(_hoeDir==-1){
+         double _owDest=cur_cv_origin[_hoeOwnerIdx];
+         if(!naf(_owDest)&&_owDest<cl) _ddeTarget=_owDest;
+      } else if(_hoeDir==1){
+         double _owDest=cur_cv_extreme[_hoeOwnerIdx];
+         if(!naf(_owDest)&&_owDest>cl) _ddeTarget=_owDest;
       }
    }
 
-   // ─── ENGINE 7: EXECUTION CONFIDENCE (ECE) ────────────────────────
-   // Continuous confidence from all engines combined. Entry fires when high enough.
-   double _eceOwnership = _hoeOwnerPct;                                    // how dominant is the owner?
-   double _eceMaturity = _cmeEntryProb;                                    // how mature is the entry?
-   double _eceGeometry = fmin2(100.0, 100.0-_geCapacity);                  // small capacity = entry close
-   double _eceCompression = _hoeComp;                                       // high compression = faster entry
-   double _eceDestination = naf(_ddeTarget)?20.0:fmin2(100.0, 100.0-_geDistTarget*10.0); // close to target = high
+   // ─── ENGINE 7: EXECUTION PROBABILITY (EPE) — CONTINUOUS ─────────
+   // Entry fires when probability is high enough. Not binary.
+   // entryProb = ownership × maturity × geometry × destination × recursion
+   double _eceOwnership = _hoeOwnerPct;
+   double _eceMaturity = _cmeEntryProb;
+   double _eceGeometry = fmin2(100.0, 100.0-_geCapacity);  // low capacity = close to execution
+   double _eceCompression = _hoeComp;
+   double _eceDestination = naf(_ddeTarget)?20.0:fmin2(100.0, 100.0-_geDistTarget*10.0);
+   double _eceRecursion = _rfeImmediateProb;
+   // Combined execution probability
    double _eceEntryConf = fmin2(100.0,
-      _eceOwnership*0.20 +
-      _eceMaturity*0.30 +
+      _eceOwnership*0.15 +
+      _eceMaturity*0.25 +
       _eceGeometry*0.20 +
-      _eceCompression*0.15 +
-      _eceDestination*0.15);
+      _eceCompression*0.10 +
+      _eceDestination*0.15 +
+      _eceRecursion*0.15);
 
    // ─── EXIT ENGINE ─────────────────────────────────────────────────
    // Never exit because entryTF target hit.
-   // Exit when: destination reached OR ownership transfers OR expansion exhausted.
+   // Exit when: destination reached OR ownership transfers OR curve exhausts.
    bool _destReached = !naf(_ddeTarget) && (g_tradeDir==1 ? cl>=_ddeTarget-atr*0.3 : g_tradeDir==-1 ? cl<=_ddeTarget+atr*0.3 : false);
    bool _ownershipAgainst = (g_tradeDir==1 && _hoeDir==-1 && _oteMaturity>=60.0) || (g_tradeDir==-1 && _hoeDir==1 && _oteMaturity>=60.0);
-   bool _expansionExhausted = _hoeWP>=92.0 && _oteMaturity>=50.0;
+   bool _curveExhausted = _ceeTransferComplete && _rfeExhaustProb>=70.0;
    bool _domLost = _inl_dom_m5<25.0 && _inl_dom_m15<25.0 && _inl_dom_h1<25.0 && !_anyRungInReturn && !_anyRungInTerminal;
-   bool exitCondition = _destReached || _ownershipAgainst || _expansionExhausted ||
+   bool exitCondition = _destReached || _ownershipAgainst || _curveExhausted ||
         (g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||
         (g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||
         (g_tradeDir!=0&&_domLost);
