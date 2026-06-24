@@ -1704,7 +1704,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool structFlipBear=g_direction==-1&&bearConvShift&&structBias==1;
    // v11: recursiveTrigger driven by ENGINES not phase labels
    // Uses se5_wp >= 85% as proxy for "curve at return/terminal" (available here, before v9 engines)
-   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(nz(se5_wp)>=85.0)&&(nz(se5_dom)>=40.0)&&g_direction!=0&&!naf(g_flipTop);
+   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(nz(se5_wp)>=85.0)&&(nz(MapVal(se5.t,se5.dom,se5.n,ct))>=40.0)&&g_direction!=0&&!naf(g_flipTop);
    if(recursiveTrigger&&(g_recursiveFiredBar<0||(i-g_recursiveFiredBar)>resetBars)){
       g_recursiveJustFired=true; g_recursiveFiredBar=i; g_recursiveComplete=true;
       int idx=MathMin(MathMax(g_entryCycle,1)-1,3);
@@ -1729,7 +1729,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool bearInvalid=g_direction==-1&&cl>g_flipTop+atr*0.5;
    bool opposingMove=(g_direction==1&&bearImpulse)||(g_direction==-1&&bullImpulse);
    bool hardInvalid=bullInvalid||bearInvalid;
-   bool softReset=barsSinceCont>resetBars&&opposingMove&&(nz(se5_wp)<75.0)&&(nz(se5_dom)<30.0)&&!erf_suppressRotation;
+   bool softReset=barsSinceCont>resetBars&&opposingMove&&(nz(se5_wp)<75.0)&&(nz(MapVal(se5.t,se5.dom,se5.n,ct))<30.0)&&!erf_suppressRotation;
    bool safeToReset=hardInvalid||softReset;
    if(g_direction!=l0_dir&&safeToReset){
       g_direction=0; g_lastSpawnDir=0; g_flipTop=NA; g_flipBot=NA; g_contBar=-1; g_obBirthBar=-1; g_barsInZone=0;
