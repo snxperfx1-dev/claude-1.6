@@ -1975,26 +1975,27 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    //==============================================================
    // SECTION 24 — TRADE STATE
    //==============================================================
-   // HTF FLIP ZONE EXIT + REVERSAL HUNT ACTIVATION
-   // The flip zone is the BOUNDARY between buy/sell territory.
-   // BUYS are below flip zone. SELLS are above flip zone.
-   // Exit longs AT the flip zone (price has reached the boundary = TP).
-   // Then hunt sells ABOVE the flip zone (supply territory).
-   bool _atFlipZoneLongExit = g_tradeDir==1 && !naf(_ctx_fb) && cl>=_ctx_fb-atr*0.3;    // long reached flip zone = TP
-   bool _atFlipZoneShortExit = g_tradeDir==-1 && !naf(_ctx_ft) && cl<=_ctx_ft+atr*0.3;  // short reached flip zone = TP
+   // CURVE CONTEXT: each curve has ONLY 2 zones (one combo at a time):
+   //   COMBO A (bearish curve): flipzone + supply → sells at supply, exit shorts at flipzone
+   //   COMBO B (bullish curve): flipzone + demand → buys at demand, exit longs at flipzone
+   //
+   // Exit longs AT flipzone (bullish curve TP reached) → switch to COMBO A (sell at supply above)
+   // Exit shorts AT flipzone (bearish curve TP reached) → switch to COMBO B (buy at demand below)
+   bool _atFlipZoneLongExit = g_tradeDir==1 && !naf(_ctx_fb) && cl>=_ctx_fb-atr*0.3;
+   bool _atFlipZoneShortExit = g_tradeDir==-1 && !naf(_ctx_ft) && cl<=_ctx_ft+atr*0.3;
    bool _flipZoneExit = _atFlipZoneLongExit || _atFlipZoneShortExit;
-   // On flip zone exit: switch hunt mode to opposite direction ABOVE/BELOW flip
-   // Long exits at flip → hunt SELLS above flip zone (supply territory)
+   // Switch combo on exit:
+   // Long TP at flip → now COMBO A: hunt sells at supply (above _ctx_ft)
    if(_atFlipZoneLongExit && g_huntMode!=-1){
       g_huntMode=-1; g_huntActivatedBar=i;
-      g_huntDemandLo=nz(_ctx_ft,cl);                // sell hunt zone starts at flip TOP
-      g_huntDemandHi=g_huntDemandLo+atr*3.0;        // extends up into supply ABOVE flip
+      g_huntDemandLo=nz(_ctx_ft,cl);                // supply starts at flip TOP
+      g_huntDemandHi=g_huntDemandLo+atr*3.0;        // supply extends above
    }
-   // Short exits at flip → hunt BUYS below flip zone (demand territory)
+   // Short TP at flip → now COMBO B: hunt buys at demand (below _ctx_fb)
    if(_atFlipZoneShortExit && g_huntMode!=1){
       g_huntMode=1; g_huntActivatedBar=i;
-      g_huntDemandHi=nz(_ctx_fb,cl);                // buy hunt zone starts at flip BOTTOM
-      g_huntDemandLo=g_huntDemandHi-atr*3.0;        // extends down into demand BELOW flip
+      g_huntDemandHi=nz(_ctx_fb,cl);                // demand starts at flip BOTTOM
+      g_huntDemandLo=g_huntDemandHi-atr*3.0;        // demand extends below
    }
 
    // EXIT CONDITIONS
