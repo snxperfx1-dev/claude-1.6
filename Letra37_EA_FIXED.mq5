@@ -1703,9 +1703,8 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool structFlipBull=g_direction==1&&bullConvShift&&structBias==-1;
    bool structFlipBear=g_direction==-1&&bearConvShift&&structBias==1;
    // v11: recursiveTrigger driven by ENGINES not phase labels
-   // Old: required currentPhase=="Demand Return"||"Supply Return"
-   // New: requires ownership transfer mature + entry probability high (same meaning, no phase dependency)
-   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(_oteMaturity>=55.0)&&g_demandReturnBelief>40&&g_direction!=0&&!naf(g_flipTop);
+   // Uses se5_wp >= 85% as proxy for "curve at return/terminal" (available here, before v9 engines)
+   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(nz(se5_wp)>=85.0)&&g_demandReturnBelief>40&&g_direction!=0&&!naf(g_flipTop);
    if(recursiveTrigger&&(g_recursiveFiredBar<0||(i-g_recursiveFiredBar)>resetBars)){
       g_recursiveJustFired=true; g_recursiveFiredBar=i; g_recursiveComplete=true;
       int idx=MathMin(MathMax(g_entryCycle,1)-1,3);
@@ -1981,13 +1980,10 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // The flip context gate (_flipCtxAllowLong/Short) already ensures correct side (below/above flip)
    bool _entryReadyGate = _highDomM5plus && _terminalOrReturn;
 
-   // ─── v11: ENTRY DRIVEN BY EXECUTION PROBABILITY, NOT PHASE LABELS ───
-   // Phases are OUTPUT only. Execution emerges from engines.
-   // beliefEntry fires when execution probability is high enough (not when phase=="Demand Return")
-   // The _eceEntryConf from Engine 7 (EPE) is the combined probabilistic confidence.
-   // Additionally: flip context (below=buy, above=sell) and multi-TF alignment still gate.
-   bool beliefEntryLong=_allowLong&&direction==1&&_eceEntryConf>=70.0&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong&&g_expansionBelief<60;
-   bool beliefEntryShort=_allowShort&&direction==-1&&_eceEntryConf>=70.0&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort&&g_expansionBelief<60;
+   // v11: Entry driven by engine-available data (v9 full engines computed later for exit)
+   // Uses: _highDomM5plus + _terminalOrReturn + _entryReadyGate + flip context + multi-TF
+   bool beliefEntryLong=_allowLong&&direction==1&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong&&g_expansionBelief<60;
+   bool beliefEntryShort=_allowShort&&direction==-1&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort&&g_expansionBelief<60;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
 
@@ -2550,7 +2546,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    string tqe_riskLevel=(rot_transferProbability>65||re_resolutionState=="UNRESOLVED")?"HIGH":(rot_transferProbability>35||tqe_rawScore<60)?"MEDIUM":"LOW";
    //--- V72.8 DOE ---
    string doe_bias=(displayWaveDir_M5==1&&mce_htfAlignmentScore>=75&&rot_controlStability>=65)?"Strong Bullish":displayWaveDir_M5==1?"Bullish":(displayWaveDir_M5==-1&&mce_htfAlignmentScore>=75&&rot_controlStability>=65)?"Strong Bearish":displayWaveDir_M5==-1?"Bearish":"Neutral";
-   string doe_action=inv_invalidated?"No Trade":(g_liqg_active&&!(liqg_objArrival&&liqg_trueCHoCH))?"Wait":!erf_entryGate?"Wait":!te_rrGate?"Wait":(_terminalPhaseLong&&direction==1)?"Long":(_terminalPhaseShort&&direction==-1)?"Short":"Wait";
+   string doe_action=inv_invalidated?"No Trade":(g_liqg_active&&!(liqg_objArrival&&liqg_trueCHoCH))?"Wait":!erf_entryGate?"Wait":!te_rrGate?"Wait":(direction==1&&nz(se5_wp)>=75.0)?"Long":(direction==-1&&nz(se5_wp)>=75.0)?"Short":"Wait";
    double doe_confidence=fmin2(modelConfidence*0.50+mce_alignmentScore*0.25+phaseConfidence*0.25,frz_attractorConvergence?in_doeCapConv:in_doeCapBase);
    string doe_tradeType=(ne_dominantNarrative=="Bullish Continuation"||ne_dominantNarrative=="Bearish Continuation")?"Continuation":(ne_dominantNarrative=="Bullish Pullback"||ne_dominantNarrative=="Bearish Pullback")?"Pullback":(ie1a_currentPhase=="New High"||ie1a_currentPhase=="New Low")?"Breakout":"Wait";
    double doe_entryMid=(frz_inProximity&&frz_bestZoneDir==direction&&!naf(frz_bestZoneMid))?frz_bestZoneMid:((ie1a_currentPhase=="Demand Return"||ie1a_currentPhase=="Supply Return")&&!naf(point4OriginHigh)&&!naf(point4OriginLow))?(point4OriginHigh+point4OriginLow)/2.0:cl;
@@ -3496,8 +3492,8 @@ void ContextRun(const int bars)
    int _expShifts=(int)clamp(nz((double)cur_expRecDepth,3.0),3.0,5.0);   // F72: Wyckoff terminal is ~4 shifts, min 3
    if(ctx_fuMerged) _expShifts=(int)MathMin(_expShifts+3,7);   // Principle 9: camp merged back -> cycle still owes ~3 more recursions
    // RESET on: leaving flip zone OR expansion phase begins (wave is running, not transitioning)
-   bool _inExpansionPhase = (ie1a_currentPhase=="Expansion"||ie1a_currentPhase=="New High"||ie1a_currentPhase=="New Low"||
-        ie1a_currentPhase=="Expansion Pre-Convexity"||ie1a_currentPhase=="Expansion Induction"||ie1a_currentPhase=="Expansion Liquidity");
+   bool _inExpansionPhase = (cur_ie1aPhase=="Expansion"||cur_ie1aPhase=="New High"||cur_ie1aPhase=="New Low"||
+        cur_ie1aPhase=="Expansion Pre-Convexity"||cur_ie1aPhase=="Expansion Induction"||cur_ie1aPhase=="Expansion Liquidity");
    if(!ctx_atFlip || _inExpansionPhase){ g_termActive=false; g_termShifts=0; ctx_termM1Cycles=0; g_termPrevDirM1=cur_dirM1; }
    else {
       if(!g_termActive){ g_termActive=true; g_termShifts=0; g_termPrevDirM5=cur_dirM5; ctx_termM1Cycles=0; g_termPrevDirM1=cur_dirM1; }
