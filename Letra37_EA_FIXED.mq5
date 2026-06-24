@@ -1527,7 +1527,7 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // 12A — BELIEF ENGINE
    //==============================================================
    g_preConvEvidence=bullMomDecay||bearMomDecay;
-   g_inductionEvidence=(direction==1&&bearImpulse&&nearFlipzone)||(direction==-1&&bullImpulse&&nearFlipzone);
+   g_inductionEvidence=(direction==1&&bearImpulse&&g_nearFlipzone)||(direction==-1&&bullImpulse&&g_nearFlipzone);
    bool liquidityEvidence=obs_LiquidityScore>50.0&&obs_DecayScore>40.0;
    double _expPosMult=waveProgress<40.0?1.20:waveProgress<60.0?0.80:0.50;
    double rawExpansionBelief=fmin2((obs_ExpansionScore*0.45+(bullImpulse||bearImpulse?30.0:0.0)+(efficiency>effThresh*1.1?15.0:0.0)+sim_Expansion*0.10)*_expPosMult,100.0);
