@@ -3699,10 +3699,26 @@ input double        InpMaxSLAtr         = 10.0;         // Safety cap on total S
 input bool          InpCompSizing       = true;         // Recursion-size-aware sizing: compression sets stop distance + partial timing (wide loop=wider stop, failure-swing=tighter)
 
 input group "Letra37 EA - Take Profit"
-//  SPEC AUDIT: ALL take-profit logic REMOVED. Campaigns are NOT closed because a reward ratio
-//  was reached. The position lives until ownership transfers or the campaign's terminal sequence
-//  completes. The broker order has TP=0 (no server TP). Structure SL remains the only hard stop.
-//  (Retained as empty group for input-ordering backward compat; inputs deleted.)
+//  Profit management: 5 partial levels, 20% each.
+//  TWO MODES:
+//  1) DOLLAR mode (InpProfitMode=false) — fixed dollar amounts per level
+//  2) R-MULTIPLE mode (InpProfitMode=true) — multiples of initial risk (RECOMMENDED)
+//     R-multiple mode scales automatically with lot size and account equity.
+//     Example: risk $400 → L1=1R=$400, L2=2R=$800, L3=5R=$2000 etc.
+input bool          InpUseRMultiple    = false;        // TRUE = R-multiple mode (scales with risk), FALSE = fixed dollar amounts
+// Fixed dollar mode levels:
+input double        InpTPDollar1       = 900.0;        // Level 1 dollar profit → 20% close + breakeven SL
+input double        InpTPDollar2       = 1600.0;       // Level 2 dollar profit → 20% close + trailing stop ON
+input double        InpTPDollar3       = 4400.0;       // Level 3 dollar profit → 20% close
+input double        InpTPDollar4       = 6400.0;       // Level 4 dollar profit → 20% close
+input double        InpTPDollar5       = 8600.0;       // Level 5 dollar profit → 20% close
+// R-multiple mode levels (multiples of initial risk):
+input double        InpTPR1            = 1.0;          // Level 1 R → 20% close + breakeven SL
+input double        InpTPR2            = 2.0;          // Level 2 R → 20% close + trailing stop ON
+input double        InpTPR3            = 4.0;          // Level 3 R → 20% close
+input double        InpTPR4            = 6.0;          // Level 4 R → 20% close
+input double        InpTPR5            = 9.0;          // Level 5 R → 20% close
+input double        InpTrailAtr        = 2.0;          // Trailing stop distance in ATR after Level 2 hit
 
 input group "Letra37 EA - Trade Management (F72 OWNERSHIP EXITS ONLY)"
 //  SPEC AUDIT: break-even, trailing, partial, session-end, thesis-flip, phase-flip, opposite-
@@ -4637,12 +4653,8 @@ void ManagePositions()
       double rMult =(dir==1?(mkt-openP):(openP-mkt))/risk;
 
       //==============================================================
-      // PROFIT MANAGEMENT — 5 levels, 20% each
-      // $900 → 20% + breakeven SL
-      // $2300 → 20%
-      // $4400 → 20%
-      // $6400 → 20%
-      // $8600 → 20% + trailing stop
+      // PROFIT MANAGEMENT — 5 levels 20% each, configurable via inputs
+      // Mode: Dollar amounts OR R-multiples (InpUseRMultiple)
       //==============================================================
       double posProfit=PositionGetDouble(POSITION_PROFIT);
       double posLots=PositionGetDouble(POSITION_VOLUME);
@@ -4652,47 +4664,49 @@ void ManagePositions()
          if(closeLots<minLot) closeLots=minLot;
          if(closeLots>=posLots) closeLots=NormalizeLot(posLots*0.5); // safety: never close 100%
 
-         // Level 1 — $900 profit: close 20% + move SL to breakeven
-         if(!gMgP1Done[mi] && posProfit>=900.0){
+         // Level 1 — close 20% + move SL to breakeven
+         if(!gMgP1Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR1:InpTPDollar1)){
             gMgP1Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L1 @$900 closed ",DoubleToString(closeLots,2)," lots profit=",DoubleToString(posProfit,2));
+               if(InpDebugExits) Print("=== PARTIAL L1 @L1 closed ",DoubleToString(closeLots,2)," lots profit=",DoubleToString(posProfit,2));
             // Move SL to breakeven (open price + 1 point buffer)
             double beSL=(dir==1)?openP+_Point:openP-_Point;
             if((dir==1&&beSL>curSL)||(dir==-1&&beSL<curSL))
                if(trade.PositionModify(tk,beSL,0.0))
                   if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits));
          }
-         // Level 2 — $2300 profit: close 20%
-         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=2300.0){
+         // Level 2 — close 20% + activate trailing stop
+         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR2:InpTPDollar2)){
             gMgP2Done[mi]=true;
-            if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L2 @$2300 closed ",DoubleToString(closeLots,2)," lots");
+            gMgTrailing[mi]=true;
+            gMgTrailSL[mi]=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
+            if(closeLots<posLots) trade.PositionClosePartial(tk,closeLots);
+            if(InpDebugExits) Print("=== PARTIAL L2 @L2 trail ON closed ",DoubleToString(closeLots,2)," lots");
          }
-         // Level 3 — $4400 profit: close 20%
-         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=4400.0){
+         // Level 3 — close 20%
+         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR3:InpTPDollar3)){
             gMgP3Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L3 @$4400 closed ",DoubleToString(closeLots,2)," lots");
+               if(InpDebugExits) Print("=== PARTIAL L3 @L3 closed ",DoubleToString(closeLots,2)," lots");
          }
-         // Level 4 — $6400 profit: close 20%
-         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=6400.0){
+         // Level 4 — close 20%
+         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR4:InpTPDollar4)){
             gMgP4Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L4 @$6400 closed ",DoubleToString(closeLots,2)," lots");
+               if(InpDebugExits) Print("=== PARTIAL L4 @L4 closed ",DoubleToString(closeLots,2)," lots");
          }
-         // Level 5 — $8600 profit: close 20% + activate trailing stop
-         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=8600.0){
+         // Level 2 — close 20% + activate trailing stop
+         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=(InpUseRMultiple?risk*InpTPR5:InpTPDollar5)){
             gMgP5Done[mi]=true;
             gMgTrailing[mi]=true;
-            gMgTrailSL[mi]=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
+            gMgTrailSL[mi]=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L5 @$8600 closed ",DoubleToString(closeLots,2)," lots + trailing activated");
+               if(InpDebugExits) Print("=== PARTIAL L5 @L5 closed ",DoubleToString(closeLots,2)," lots + trailing activated");
          }
 
          // Trailing stop management (active after level 5)
          if(mi>=0 && gMgTrailing[mi]){
-            double newTrail=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
+            double newTrail=(dir==1)?(mkt-atr*InpTrailAtr):(mkt+atr*InpTrailAtr);
             bool improved=(dir==1&&newTrail>gMgTrailSL[mi])||(dir==-1&&newTrail<gMgTrailSL[mi]);
             if(improved && ((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
                gMgTrailSL[mi]=newTrail;
