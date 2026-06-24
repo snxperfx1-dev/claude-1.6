@@ -1702,7 +1702,10 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool trueCHoCH_bear=g_direction==-1&&priceInSupply&&bearImpulse&&liqSweepOK;
    bool structFlipBull=g_direction==1&&bullConvShift&&structBias==-1;
    bool structFlipBear=g_direction==-1&&bearConvShift&&structBias==1;
-   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(ie1a_currentPhase=="Demand Return"||ie1a_currentPhase=="Supply Return")&&g_demandReturnBelief>40&&g_direction!=0&&!naf(g_flipTop);
+   // v11: recursiveTrigger driven by ENGINES not phase labels
+   // Old: required currentPhase=="Demand Return"||"Supply Return"
+   // New: requires ownership transfer mature + entry probability high (same meaning, no phase dependency)
+   bool recursiveTrigger=(trueCHoCH_bull||trueCHoCH_bear||structFlipBull||structFlipBear)&&(_oteMaturity>=55.0)&&g_demandReturnBelief>40&&g_direction!=0&&!naf(g_flipTop);
    if(recursiveTrigger&&(g_recursiveFiredBar<0||(i-g_recursiveFiredBar)>resetBars)){
       g_recursiveJustFired=true; g_recursiveFiredBar=i; g_recursiveComplete=true;
       int idx=MathMin(MathMax(g_entryCycle,1)-1,3);
@@ -1978,16 +1981,13 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // The flip context gate (_flipCtxAllowLong/Short) already ensures correct side (below/above flip)
    bool _entryReadyGate = _highDomM5plus && _terminalOrReturn;
 
-   // --- ENTRY CONDITIONS ---
-   // Spec: At demand zone (bullish macro) → ONLY BUYS.
-   //       At supply zone (bearish macro) → ONLY SELLS.
-   //       Anticipatory (dom>=80% at HTF flip with transition complete) → allowed against macro.
-   bool _terminalPhaseLong = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
-        ie1a_currentPhase=="Demand Return");
-   bool _terminalPhaseShort = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
-        ie1a_currentPhase=="Supply Return");
-   bool beliefEntryLong=_allowLong&&direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
-   bool beliefEntryShort=_allowShort&&direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   // ─── v11: ENTRY DRIVEN BY EXECUTION PROBABILITY, NOT PHASE LABELS ───
+   // Phases are OUTPUT only. Execution emerges from engines.
+   // beliefEntry fires when execution probability is high enough (not when phase=="Demand Return")
+   // The _eceEntryConf from Engine 7 (EPE) is the combined probabilistic confidence.
+   // Additionally: flip context (below=buy, above=sell) and multi-TF alignment still gate.
+   bool beliefEntryLong=_allowLong&&direction==1&&_eceEntryConf>=70.0&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong&&g_expansionBelief<60;
+   bool beliefEntryShort=_allowShort&&direction==-1&&_eceEntryConf>=70.0&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort&&g_expansionBelief<60;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
 
