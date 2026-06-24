@@ -2053,8 +2053,9 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool beliefEntryShort=_allowShort&&direction==-1&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort;
    // When ownership death confirmed, bypass ERF gate (the ownership signal IS the readiness confirmation)
    bool _erfBypass = _ownerDeathConfirmed && (cur_ownerDeathSignals >= 3 || _ds4_lifeDead);
-   bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&(erf_entryGate||_erfBypass);
-   bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&(erf_entryGate||_erfBypass);
+   // ENTRY SIGNALS — ownership death + curve context only, no ERF/DOE/grade/opp blocking
+   bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&obFresh;
+   bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&obFresh;
 
    // ===== LAYER 2: CONTINUATION HUNT MODE (demand/supply expansion entries) =====
    // After a flip zone trade confirms the thesis, HUNT for additional entries at demand/supply.
@@ -4088,15 +4089,10 @@ void ComputeEngine()
 int DesiredDirection()
 {
    bool engLong=cur_longSignal, engShort=cur_shortSignal;
-   bool v72Long =(cur_doeAction=="Long"),  v72Short=(cur_doeAction=="Short");
    if(InpSignalSource==SIG_ENGINE) return(engLong?1:engShort?-1:0);
-   if(InpSignalSource==SIG_V72)    return(v72Long?1:v72Short?-1:0);
-   if(InpSignalSource==SIG_BOTH){ if(engLong&&v72Long) return(1); if(engShort&&v72Short) return(-1); return(0); }
-   // SIG_EITHER: arrow leads, DOE fills in.
+   // SIG_EITHER / SIG_BOTH / SIG_V72 — arrow leads. DOE removed from entry chain.
    if(engLong)  return(1);
    if(engShort) return(-1);
-   if(v72Long)  return(1);
-   if(v72Short) return(-1);
    // OWNERSHIP DEATH PATH: when 2+ death signals confirmed AND macro direction is dying,
    // the counter-direction IS the signal even when no arrow or DOE fired.
    // Uses cur_dirH4/cur_dirH1 globals (available in DesiredDirection scope).
@@ -4122,11 +4118,7 @@ int ConsensusBias()
       if(StringFind(cur_cmdNarrative,"Bull")>=0) return(1);
       if(StringFind(cur_cmdNarrative,"Bear")>=0) return(-1);
    }
-   //--- 2) DOE decision authority ---
-   if(cur_doeAction=="Long")  return(1);
-   if(cur_doeAction=="Short") return(-1);
-   if(StringFind(cur_doeBias,"Bull")>=0) return(1);
-   if(StringFind(cur_doeBias,"Bear")>=0) return(-1);
+   //--- 2) DOE removed from ConsensusBias --- 
    //--- 3) fallback: structural consensus (network + wave + stack) ---
    int v=ctx_netBias+ctx_waveDir;
    if(ctx_stackDir>0) v+=1; else if(ctx_stackDir<0) v-=1;
@@ -4139,11 +4131,9 @@ bool PassesFilters(const int dir)
 {
    if(dir==1 && !InpTradeLongs){ gEntryBlock="longs off"; return(false); }
    if(dir==-1&& !InpTradeShorts){ gEntryBlock="shorts off"; return(false); }
-   if(InpRequireErfGate && !cur_erfEntryGate){ gEntryBlock="ERF gate shut"; return(false); }
-   if(InpRequireHtfAlign && !(cur_htfAlign==dir || cur_htfAlign==0)){ gEntryBlock="HTF align"; return(false); }
-   if(InpMinConfidence>0.0 && cur_doeConfidence<InpMinConfidence){ gEntryBlock="DOE conf low"; return(false); }
    if(cur_invInvalidated){ gEntryBlock="invalidated"; return(false); }
-   //--- v60 context filters (Letra still decides; these only confirm/veto) ---
+   // ERF gate, grade, DOE confidence, opp score REMOVED — ownership death engine is the authority
+   if(InpRequireHtfAlign && !(cur_htfAlign==dir || cur_htfAlign==0)){ gEntryBlock="HTF align"; return(false); }
    if(InpUseV60Context){
       if(InpReqNetAgree   && !(ctx_netBias==dir || ctx_netBias==0)){ gEntryBlock="network disagrees"; return(false); }
       if(InpReqStackAgree && ctx_stackDir!=dir){ gEntryBlock="stack disagrees"; return(false); }
@@ -4443,9 +4433,8 @@ void TryEnter()
       if(_riskPctActual>InpSmallAcctMaxRiskPct){ gEntryBlock="small-acct: min-lot risk "+DoubleToString(_riskPctActual,2)+"% > cap "+DoubleToString(InpSmallAcctMaxRiskPct,2)+"%"; return; }
    }
    bool _arrow=(dir==1?cur_longSignal:cur_shortSignal);
-   bool _doe=(dir==1?(cur_doeAction=="Long"):(cur_doeAction=="Short"));
-   string _trig=fuEntry?"FU":mtfEntry?("MTF:"+cur_mtfEntryTF):aggressive?"V60AGG":(_arrow&&_doe)?"ARROW+DOE":_arrow?"ARROW":"DOE";
-   string cmt=InpComment+" "+_trig+" "+cur_tqeGrade;
+   string _trig=fuEntry?"FU":mtfEntry?("MTF:"+cur_mtfEntryTF):aggressive?"V60AGG":_arrow?"ARROW":"DEATH";
+   string cmt=InpComment+" "+_trig+(cur_ownerDeathSignals>0?" D"+IntegerToString(cur_ownerDeathSignals):"");
 
    bool ok=false;
    if(InpUseLimitEntry && !naf(cur_doeEntryMid)){
@@ -4704,9 +4693,9 @@ void ShowStatus()
    string s="";
    s+="LETRA 37 EA  ["+_Symbol+","+EnumToString(_Period)+"]\n";
    s+="Phase  : "+cur_currentDisplayPhase+"  (M5 "+f_waveDirLabel(cur_dirM5)+")\n";
-   s+="DOE    : "+cur_doeAction+"  conf "+R0(cur_doeConfidence)+"%  bias "+cur_doeBias+"\n";
-   s+="Grade  : eng "+cur_grade+"  TQE "+cur_tqeGrade+"  risk "+cur_tqeRisk+"\n";
-   s+="Opp    : "+cur_oppState+" "+R0(cur_oppProgress)+"%   ERF gate "+(cur_erfEntryGate?"OPEN":"SHUT")+"\n";
+   s+="DOE    : REMOVED — ownership death engine is authority\n";
+   s+="Grade  : REMOVED — no grade/TQE/ERF gates\n";
+   s+="Opp    : REMOVED — no opportunity score gates\n";
    s+="Stop   : "+PXs(cur_invActiveStop)+(cur_invInvalidated?" [INVALID]":"")+"   Target "+PXs(!naf(ctx_netTarget)?ctx_netTarget:ctx_attractorPx)+"\n";
    s+="Dest   : "+cur_tplWinnerClass+" "+PXs(cur_tplMainTarget)+" ("+cur_tplSource+")\n";
    s+="Pos    : "+IntegerToString(CountOwnPositions())+"   TradesToday "+IntegerToString(gTradesToday)+"\n";
