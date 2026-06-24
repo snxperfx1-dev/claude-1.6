@@ -2032,130 +2032,165 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // SECTION 24 — TRADE STATE
    //==============================================================
    // ═══════════════════════════════════════════════════════════════════
-   // RECURSIVE CURVE OWNERSHIP ARCHITECTURE — Specification v8
-   // 15-layer unified decision engine.
-   // Core: "Who owns price? How mature is the transfer? How much curve remains?"
+   // RECURSIVE CURVE OWNERSHIP ARCHITECTURE — Specification v9
+   // 7 probabilistic engines. No binary states. Continuous maturity.
+   // "Who owns price, how mature is the curve, how much geometry remains?"
    // ═══════════════════════════════════════════════════════════════════
 
-   // ─── LAYER 1: CURVE OWNERSHIP ENGINE (COE) ───────────────────────
-   // Each TF owns a curve. Ownership = highest dominance on highest TF in expansion.
-   // Score: phaseWeight × dominance × waveProgress × TF hierarchy weight
-   double _coeScore[6]; int _coeOwnerIdx=-1; double _coeBestScore=0;
+   // ─── ENGINE 1: HIERARCHICAL OWNERSHIP (HOE) ──────────────────────
+   // Ownership is DISTRIBUTED across all TFs. Not one winner.
+   // Each TF has a % of ownership based on phase×dominance×progress×hierarchy.
+   double _hoePct[6]; double _hoeTotal=0;
    for(int _oi=0;_oi<6;_oi++){
       int _ph=cur_cv_phase[_oi]; int _d=cur_cv_dir[_oi];
-      double _wp=cur_cv_wp[_oi]; double _dm=cur_cv_dom[_oi]; double _cmp=cur_cv_comp[_oi];
-      // Phase weight: EXPANSION family dominates
-      double _phW = (_ph>=1&&_ph<=4) ? 1.0 :   // Expansion/Pre-Conv/Induction/Liquidity
-                    (_ph==5||_ph==6) ? 0.9 :     // New High/Low (creation)
-                    (_ph>=8&&_ph<=11) ? 0.7 :    // Retracement family (active movement)
-                    (_ph>=12) ? 0.8 :            // Return (confirmed reversal)
-                    (_ph==7) ? 0.3 : 0.1;       // Transition / Origin
-      double _tfW = (_oi==5?1.0:_oi==4?0.85:_oi==3?0.70:_oi==2?0.55:_oi==1?0.35:0.20); // H4>H1>M15>M5>M3>M1
-      _coeScore[_oi] = _phW * fmax2(_dm,5.0)/100.0 * fmax2(_wp,5.0)/100.0 * _tfW;
-      if(_d!=0 && _coeScore[_oi]>_coeBestScore){ _coeBestScore=_coeScore[_oi]; _coeOwnerIdx=_oi; }
+      double _wp=cur_cv_wp[_oi]; double _dm=cur_cv_dom[_oi];
+      double _phW = (_ph>=1&&_ph<=4)?1.0:(_ph==5||_ph==6)?0.9:(_ph>=8&&_ph<=11)?0.7:(_ph>=12)?0.8:(_ph==7)?0.3:0.1;
+      double _tfW = (_oi==5?1.0:_oi==4?0.85:_oi==3?0.70:_oi==2?0.55:_oi==1?0.35:0.20);
+      _hoePct[_oi] = _phW * fmax2(_dm,5.0)/100.0 * fmax2(_wp,5.0)/100.0 * _tfW * (_d!=0?1.0:0.01);
+      _hoeTotal += _hoePct[_oi];
    }
-   int    _coeDir = _coeOwnerIdx>=0 ? cur_cv_dir[_coeOwnerIdx] : 0;
-   double _coeDom = _coeOwnerIdx>=0 ? cur_cv_dom[_coeOwnerIdx] : 0;
-   double _coeWP  = _coeOwnerIdx>=0 ? cur_cv_wp[_coeOwnerIdx] : 0;
-   double _coeComp= _coeOwnerIdx>=0 ? cur_cv_comp[_coeOwnerIdx] : 0;
+   // Normalize to percentages
+   if(_hoeTotal>0) for(int _oi=0;_oi<6;_oi++) _hoePct[_oi]=_hoePct[_oi]/_hoeTotal*100.0;
+   // Owner = highest %
+   int _hoeOwnerIdx=-1; double _hoeOwnerPct=0;
+   for(int _oi=0;_oi<6;_oi++){ if(_hoePct[_oi]>_hoeOwnerPct){ _hoeOwnerPct=_hoePct[_oi]; _hoeOwnerIdx=_oi; } }
+   int    _hoeDir = _hoeOwnerIdx>=0 ? cur_cv_dir[_hoeOwnerIdx] : 0;
+   double _hoeDom = _hoeOwnerIdx>=0 ? cur_cv_dom[_hoeOwnerIdx] : 0;
+   double _hoeWP  = _hoeOwnerIdx>=0 ? cur_cv_wp[_hoeOwnerIdx] : 0;
+   double _hoeComp= _hoeOwnerIdx>=0 ? cur_cv_comp[_hoeOwnerIdx] : 0;
 
-   // ─── LAYER 2: OWNERSHIP TRANSFER ENGINE (OTE) ────────────────────
-   // Transfer is continuous: oldOwner% vs newOwner%
-   // States: STABLE → BUILDING → CONTESTED → TRANSFERRING → COMPLETE
-   double _oteOldPct = fmax2(0.0, 100.0 - _coeDom);
-   double _oteNewPct = _coeDom;
-   int _oteState = _oteNewPct>=60.0 ? 4 : _oteNewPct>=50.0 ? 3 : _oteNewPct>=35.0 ? 2 : _oteNewPct>=20.0 ? 1 : 0;
-   // STABLE=0, BUILDING=1, CONTESTED=2, TRANSFERRING=3, COMPLETE=4
+   // ─── ENGINE 2: OWNERSHIP TRANSFER (OTE) ──────────────────────────
+   // Continuous transfer: old vs new. Not binary.
+   double _oteOldPct = fmax2(0.0, 100.0-_hoeDom);
+   double _oteNewPct = _hoeDom;
+   // Transfer maturity: 0-100% (how complete is the handover)
+   double _oteMaturity = _oteNewPct;  // 0=stable old, 50=contested, 100=complete transfer
 
-   // ─── LAYER 8: COMPRESSION ENGINE ─────────────────────────────────
-   // Only matters near terminal regions. Controls recursion geometry.
-   int _compLevel = _coeComp>=80 ? 3 : _coeComp>=55 ? 2 : _coeComp>=30 ? 1 : 0; // EXTREME=3,HIGH=2,MED=1,LOW=0
-   int _expectedRecursions = _compLevel>=3 ? 5 : _compLevel>=2 ? 4 : _compLevel>=1 ? 3 : 1;
-
-   // ─── LAYER 9: CURVE CAPACITY ENGINE (CCE) ────────────────────────
-   // How much curve is left? Determines recursion budget.
-   double _cceDestDist = NA;
-   // Find distance to owner's destination
-   if(_coeDir==-1){
+   // ─── ENGINE 3: GEOMETRY ENGINE (GE) ──────────────────────────────
+   // Estimates available curvature — not just distance.
+   // How much curve is physically possible before impact?
+   double _geDistTarget=NA;
+   // Distance to owner's destination
+   if(_hoeDir==-1){
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
-            _cceDestDist=MathAbs(cl-cur_cv_flipTop[_ti])/fmax2(atr,1e-10); break;
+            _geDistTarget=MathAbs(cl-cur_cv_flipTop[_ti])/fmax2(atr,1e-10); break;
          }
       }
-   } else if(_coeDir==1){
+   } else if(_hoeDir==1){
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
-            _cceDestDist=MathAbs(cur_cv_flipBot[_ti]-cl)/fmax2(atr,1e-10); break;
+            _geDistTarget=MathAbs(cur_cv_flipBot[_ti]-cl)/fmax2(atr,1e-10); break;
          }
       }
    }
-   double _cceBudget = naf(_cceDestDist) ? 50.0 : fmin2(100.0, _cceDestDist*12.5);
-   double _cceWavelen = fmax2(0.4, 2.0*(1.0-_coeComp/100.0));
-   int    _cceCyclesRemaining = naf(_cceDestDist) ? 2 : (int)fmin2((double)_expectedRecursions, fmax2(0.0, MathRound(_cceDestDist/_cceWavelen)));
+   if(naf(_geDistTarget)) _geDistTarget=5.0;
+   // Geometry components
+   double _geVelocity = MathAbs(velocity)/fmax2(atr*0.1,1e-10);
+   double _geAccel = MathAbs(acceleration)/fmax2(atr*0.05,1e-10);
+   double _geConvexWidth = fmax2(0.4, 2.0*(1.0-_hoeComp/100.0));  // ATR units per loop
+   double _geCurvatureR = fmax2(0.5, _geDistTarget / fmax2(_geVelocity*0.5+1.0, 1.0));
+   double _geApproachSpeed = fmin2(100.0, _geVelocity*30.0 + _geAccel*20.0);
+   // Geometry capacity: how many loops can PHYSICALLY fit in the remaining space?
+   // Large capacity = wide curve = many large loops possible
+   // Small capacity = compressed or close = failure swing + immediate entry
+   double _geCapacity = fmin2(100.0, _geDistTarget*15.0 * (1.0-_hoeComp/200.0) / fmax2(_geConvexWidth, 0.4));
 
-   // ─── LAYER 7: ENTRY RECURSIVE ENGINE (ERE) ───────────────────────
-   // Build vs Execute detection. The critical distinction.
-   // ENTRY_NOT_READY → BUILDING → EARLY → PREENTRY → ACTIVE → TERMINAL
-   int _ereState = 0; // NOT_READY
-   bool _ereAtZone = g_nearFlipzone || g_closeInside;
-   if(_ereAtZone && _oteState>=3 && _cceBudget<30.0) _ereState=5;       // TERMINAL (imminent)
-   else if(_ereAtZone && _oteState>=3) _ereState=4;                      // ACTIVE (execute)
-   else if(_ereAtZone && _oteState>=2) _ereState=3;                      // PREENTRY (almost)
-   else if(_anyRungInTerminal && _oteState>=1) _ereState=2;              // EARLY
-   else if(_anyRungInTerminal || _anyRungInReturn) _ereState=1;          // BUILDING
-   // ERE maps to entry probability
-   double _ereProb = _ereState==5 ? 95.0 : _ereState==4 ? 80.0 : _ereState==3 ? 55.0 : _ereState==2 ? 30.0 : _ereState==1 ? 15.0 : 5.0;
+   // ─── ENGINE 4: RECURSION FORECAST (RFE) ──────────────────────────
+   // Probabilistic forecast of future loops based on geometry.
+   int    _rfeExpectedLoops = (int)fmin2(5.0, fmax2(0.0, MathRound(_geDistTarget/_geConvexWidth)));
+   double _rfeLargeProb = fmin2(100.0, _geCapacity*0.8 * (1.0-_hoeComp/100.0));
+   double _rfeFailSwingProb = fmin2(100.0, fmax2(0.0, _hoeComp*0.8 + (100.0-_geCapacity)*0.4));
+   double _rfeImmediateProb = fmin2(100.0, fmax2(0.0, _rfeFailSwingProb*0.7 + _geApproachSpeed*0.3 + (_oteMaturity>60?20.0:0.0)));
 
-   // ─── LAYER 14: DYNAMIC DESTINATION ENGINE ────────────────────────
-   // Target = owner's destination zone (demand for bearish owner, supply for bullish owner)
-   // NOT the entry TF's opposite flip. The OWNER's destination.
-   double _destination=NA;
-   if(_coeDir==-1){
-      // Bearish owner → target = demand below (bullish curve's flip below price)
+   // ─── ENGINE 5: CURVE MATURITY (CME) ──────────────────────────────
+   // Everything is probabilistic. No binary EntryActive.
+   // Maturity of the current lifecycle position.
+   double _cmeExpansionPct = fmin2(100.0, _hoeWP<40 ? _hoeWP*2.5 : 0.0);
+   double _cmeTransitionPct = fmin2(100.0, (_hoeWP>=40&&_hoeWP<65) ? (_hoeWP-40.0)*4.0 : 0.0);
+   double _cmeRetracementPct = fmin2(100.0, (_hoeWP>=55&&_hoeWP<80) ? (_hoeWP-55.0)*4.0 : 0.0);
+   double _cmeInductionPct = fmin2(100.0, (_hoeWP>=70&&_hoeWP<90) ? (_hoeWP-70.0)*5.0 : 0.0);
+   double _cmeLiquidationPct = fmin2(100.0, (_hoeWP>=80&&_hoeWP<95) ? (_hoeWP-80.0)*6.67 : 0.0);
+   double _cmeTerminalPct = fmin2(100.0, _hoeWP>=85 ? (_hoeWP-85.0)*6.67 : 0.0);
+   // Entry probability: continuous, from geometry + transfer + maturity
+   double _cmeEntryProb = fmin2(100.0,
+      _oteMaturity*0.30 +          // ownership transfer maturity
+      _rfeImmediateProb*0.25 +     // recursion forecast says entry imminent
+      _cmeTerminalPct*0.20 +       // lifecycle terminal maturity
+      (g_nearFlipzone?15.0:0.0) +  // proximity to zone
+      _geApproachSpeed*0.10);      // approach speed
+   int _cmeCyclesLeft = _rfeExpectedLoops;
+   // Execution state: continuous (not binary)
+   int _cmeExecState = _cmeEntryProb>=90 ? 5 :   // EXHAUSTED/DONE
+                        _cmeEntryProb>=75 ? 4 :   // ACTIVE
+                        _cmeEntryProb>=55 ? 3 :   // IMMINENT
+                        _cmeEntryProb>=35 ? 2 :   // PREPARING
+                        _cmeEntryProb>=15 ? 1 : 0; // BUILDING / TOO_EARLY
+
+   // ─── ENGINE 6: DYNAMIC DESTINATION (DDE) ─────────────────────────
+   // Target = owner's destination. Escalates on ownership change.
+   // NOT entry TF's opposite flip. The OWNER's demand/supply.
+   double _ddeTarget=NA; int _ddeTargetTF=-1;
+   if(_hoeDir==-1){
+      // Bearish owner → destination = demand below
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
-            _destination=cur_cv_flipTop[_ti]; break;
+            _ddeTarget=cur_cv_flipTop[_ti]; _ddeTargetTF=_ti; break;
          }
       }
-      if(naf(_destination)){
-         double _owOrig=(_coeOwnerIdx>=0?cur_cv_origin[_coeOwnerIdx]:NA);
-         if(!naf(_owOrig)&&_owOrig<cl) _destination=_owOrig;
-         else if(!naf(se5_tgt)&&se5_tgt<cl) _destination=se5_tgt;
+      if(naf(_ddeTarget)){
+         double _owOrig=(_hoeOwnerIdx>=0?cur_cv_origin[_hoeOwnerIdx]:NA);
+         if(!naf(_owOrig)&&_owOrig<cl){ _ddeTarget=_owOrig; _ddeTargetTF=_hoeOwnerIdx; }
+         else if(!naf(se5_tgt)&&se5_tgt<cl){ _ddeTarget=se5_tgt; _ddeTargetTF=2; }
       }
-   } else if(_coeDir==1){
-      // Bullish owner → target = supply above (bearish curve's flip above price)
+   } else if(_hoeDir==1){
+      // Bullish owner → destination = supply above
       for(int _ti=5;_ti>=0;_ti--){
          if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
-            _destination=cur_cv_flipBot[_ti]; break;
+            _ddeTarget=cur_cv_flipBot[_ti]; _ddeTargetTF=_ti; break;
          }
       }
-      if(naf(_destination)){
-         double _owExt=(_coeOwnerIdx>=0?cur_cv_extreme[_coeOwnerIdx]:NA);
-         if(!naf(_owExt)&&_owExt>cl) _destination=_owExt;
-         else if(!naf(se5_tgt)&&se5_tgt>cl) _destination=se5_tgt;
+      if(naf(_ddeTarget)){
+         double _owExt=(_hoeOwnerIdx>=0?cur_cv_extreme[_hoeOwnerIdx]:NA);
+         if(!naf(_owExt)&&_owExt>cl){ _ddeTarget=_owExt; _ddeTargetTF=_hoeOwnerIdx; }
+         else if(!naf(se5_tgt)&&se5_tgt>cl){ _ddeTarget=se5_tgt; _ddeTargetTF=2; }
       }
    }
 
-   // ─── LAYER 15: EXIT ENGINE ───────────────────────────────────────
+   // ─── ENGINE 7: EXECUTION CONFIDENCE (ECE) ────────────────────────
+   // Continuous confidence from all engines combined. Entry fires when high enough.
+   double _eceOwnership = _hoeOwnerPct;                                    // how dominant is the owner?
+   double _eceMaturity = _cmeEntryProb;                                    // how mature is the entry?
+   double _eceGeometry = fmin2(100.0, 100.0-_geCapacity);                  // small capacity = entry close
+   double _eceCompression = _hoeComp;                                       // high compression = faster entry
+   double _eceDestination = naf(_ddeTarget)?20.0:fmin2(100.0, 100.0-_geDistTarget*10.0); // close to target = high
+   double _eceEntryConf = fmin2(100.0,
+      _eceOwnership*0.20 +
+      _eceMaturity*0.30 +
+      _eceGeometry*0.20 +
+      _eceCompression*0.15 +
+      _eceDestination*0.15);
+
+   // ─── EXIT ENGINE ─────────────────────────────────────────────────
    // Never exit because entryTF target hit.
-   // Exit when: ownership transfers, destination curve completes, or expansion matures.
-   bool _destReached = !naf(_destination) && (g_tradeDir==1 ? cl>=_destination-atr*0.3 : g_tradeDir==-1 ? cl<=_destination+atr*0.3 : false);
-   bool _ownershipAgainst = (g_tradeDir==1 && _coeDir==-1 && _oteState>=3) || (g_tradeDir==-1 && _coeDir==1 && _oteState>=3);
-   bool _expansionMature = _coeWP>=90.0 && _oteState>=2;
+   // Exit when: destination reached OR ownership transfers OR expansion exhausted.
+   bool _destReached = !naf(_ddeTarget) && (g_tradeDir==1 ? cl>=_ddeTarget-atr*0.3 : g_tradeDir==-1 ? cl<=_ddeTarget+atr*0.3 : false);
+   bool _ownershipAgainst = (g_tradeDir==1 && _hoeDir==-1 && _oteMaturity>=60.0) || (g_tradeDir==-1 && _hoeDir==1 && _oteMaturity>=60.0);
+   bool _expansionExhausted = _hoeWP>=92.0 && _oteMaturity>=50.0;
    bool _domLost = _inl_dom_m5<25.0 && _inl_dom_m15<25.0 && _inl_dom_h1<25.0 && !_anyRungInReturn && !_anyRungInTerminal;
-   bool exitCondition = _destReached || _ownershipAgainst || _expansionMature ||
+   bool exitCondition = _destReached || _ownershipAgainst || _expansionExhausted ||
         (g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||
         (g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||
         (g_tradeDir!=0&&_domLost);
 
-   // ─── HUNT MODE: on destination reached → hunt at the reached zone ─
+   // Hunt mode: on destination reached → hunt at the reached zone
    if(_destReached && g_tradeDir==1 && g_huntMode!=-1){
       g_huntMode=-1; g_huntActivatedBar=i;
-      g_huntDemandLo=nz(_destination,cl); g_huntDemandHi=g_huntDemandLo+atr*3.0;
+      g_huntDemandLo=nz(_ddeTarget,cl); g_huntDemandHi=g_huntDemandLo+atr*3.0;
    }
    if(_destReached && g_tradeDir==-1 && g_huntMode!=1){
       g_huntMode=1; g_huntActivatedBar=i;
-      g_huntDemandHi=nz(_destination,cl); g_huntDemandLo=g_huntDemandHi-atr*3.0;
+      g_huntDemandHi=nz(_ddeTarget,cl); g_huntDemandLo=g_huntDemandHi-atr*3.0;
    }
    if(longSignal){ g_tradeDir=1; g_exitFiredBar=-1; }
    else if(shortSignal){ g_tradeDir=-1; g_exitFiredBar=-1; }
