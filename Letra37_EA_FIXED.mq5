@@ -2992,6 +2992,7 @@ void ResetState()
    ArrayFree(gMgP1Done);ArrayFree(gMgP2Done);ArrayFree(gMgP3Done);ArrayFree(gMgP4Done);ArrayFree(gMgP5Done);
    ArrayFree(gMgTrailing);ArrayFree(gMgTrailSL);
    ArrayFree(gMgEntryTime);ArrayFree(gMgMFE);ArrayFree(gMgMAE);ArrayFree(gMgQProtMode);ArrayFree(gMgQExit50);
+   ArrayFree(gMgIsDeathEntry);
    ArrayFree(g_fu_top);ArrayFree(g_fu_bot);ArrayFree(g_fu_birthBar);ArrayFree(g_fu_dir);ArrayFree(g_fu_state);
    g_fuw_tip=NA;g_fuw_bodyHigh=NA;g_fuw_bodyLow=NA;g_fuw_mid=NA;g_fuw_mid38=NA;g_fuw_mid62=NA;g_fuw_dir=0;g_fuw_leftPool=NA;g_fuw_bar=-1;g_fuw_valid=false;g_fuw_strength=NA;
    g_afe_step=0;g_afe_origin=NA;g_afe_originDir=0;g_afe_upperFlip=NA;g_afe_lowerFlip=NA;g_afe_upperFlipRole="-";g_afe_activeDest=NA;g_afe_target=NA;g_afe_selfReturnDone=false;g_afe_continuation=false;
@@ -3806,6 +3807,7 @@ input int    InpQProtMinutes    = 30;    // Age (minutes) without L1 hit -> acti
 input int    InpQEscalMinutes   = 45;    // Age (minutes) without L1 hit -> escalation partial close
 input double InpQProtSLFrac     = 0.25; // Protection SL = entry - this * initialRisk  (e.g. 0.25R closer)
 input bool   InpQEscalHalf      = true;  // TRUE=close 50% at escalation, FALSE=close 100%
+input int    InpDeathMinHoldBars = 6;   // Death entries: min bars held before ownership-transfer exit can fire (default 6=90min on M15; stops churn)
 
 //==================================================================
 // EA GLOBALS
@@ -3841,6 +3843,7 @@ double   gMgMFE[];        // max favorable excursion in R (updated every tick)
 double   gMgMAE[];        // max adverse excursion in R  (updated every tick)
 bool     gMgQProtMode[];  // protection mode active (30-min triggered)
 bool     gMgQExit50[];    // escalation 50% partial already done (45-min)
+bool     gMgIsDeathEntry[];// true = entry came from death fast-path (churn fix)
 
 //==================================================================
 // HELPERS
@@ -3919,7 +3922,7 @@ void ComputeARC()
 
 //--- management memory ---
 int MgIndex(const ulong tk){ for(int q=0;q<ArraySize(gMgTicket);q++) if(gMgTicket[q]==tk) return(q); return(-1); }
-void MgRegister(const ulong tk,const double initSL,const double tp1,const int dir)
+void MgRegister(const ulong tk,const double initSL,const double tp1,const int dir,const bool isDeathEntry=false)
 {
    if(MgIndex(tk)>=0) return;
    int s=ArraySize(gMgTicket);
@@ -3927,13 +3930,14 @@ void MgRegister(const ulong tk,const double initSL,const double tp1,const int di
    ArrayResize(gMgP1Done,s+1);ArrayResize(gMgP2Done,s+1);ArrayResize(gMgP3Done,s+1);ArrayResize(gMgP4Done,s+1);ArrayResize(gMgP5Done,s+1);
    ArrayResize(gMgTrailing,s+1);ArrayResize(gMgTrailSL,s+1);
    ArrayResize(gMgEntryTime,s+1);ArrayResize(gMgMFE,s+1);ArrayResize(gMgMAE,s+1);
-   ArrayResize(gMgQProtMode,s+1);ArrayResize(gMgQExit50,s+1);
+   ArrayResize(gMgQProtMode,s+1);ArrayResize(gMgQExit50,s+1);ArrayResize(gMgIsDeathEntry,s+1);
    gMgTicket[s]=tk; gMgInitSL[s]=initSL; gMgTP1[s]=tp1; gMgPartialDone[s]=false; gMgBEDone[s]=false; gMgDir[s]=dir;
    gMgP1Done[s]=false; gMgP2Done[s]=false; gMgP3Done[s]=false; gMgP4Done[s]=false; gMgP5Done[s]=false;
    gMgTrailing[s]=false; gMgTrailSL[s]=0.0;
    // quality protection initial state
    gMgEntryTime[s]=TimeCurrent(); gMgMFE[s]=0.0; gMgMAE[s]=0.0;
    gMgQProtMode[s]=false; gMgQExit50[s]=false;
+   gMgIsDeathEntry[s]=isDeathEntry;
 }
 void MgCleanup()
 {
@@ -3944,6 +3948,7 @@ void MgCleanup()
          ArrayRemove(gMgTrailing,q,1);ArrayRemove(gMgTrailSL,q,1);
          ArrayRemove(gMgEntryTime,q,1);ArrayRemove(gMgMFE,q,1);ArrayRemove(gMgMAE,q,1);
          ArrayRemove(gMgQProtMode,q,1);ArrayRemove(gMgQExit50,q,1);
+         ArrayRemove(gMgIsDeathEntry,q,1);
       }
    }
 }
@@ -4370,7 +4375,7 @@ void TryEnter()
          string cmtD=InpComment+" DEATH"+IntegerToString(cur_ownerDeathSignals);
          bool okD=(dir==1)?trade.Buy(lotD,_Symbol,askD,slD,0.0,cmtD):trade.Sell(lotD,_Symbol,bidD,slD,0.0,cmtD);
          if(!okD && MktClosed()) return;
-         MgRegister(trade.ResultOrder(),slD,NA,dir);
+         MgRegister(trade.ResultOrder(),slD,NA,dir,true); // isDeathEntry=true
          gTradesToday++; gEntryBlock="ENTERED DEATH"+IntegerToString(cur_ownerDeathSignals);
          if(InpDebugEntries) Print("=== ENTRY DEATH ",(dir==1?"BUY":"SELL")," D=",cur_ownerDeathSignals,"/4 @",DoubleToString(entryD,_Digits)," SL=",DoubleToString(slD,_Digits));
          return;
@@ -4660,9 +4665,12 @@ void ManagePositions()
       //==============================================================
       // 30-MIN TRADE QUALITY PROTECTION
       // Log: tracks the original spec entry time in MgRegister.
-      // Protection fires at 30 min (no L1 yet): tighten SL.
-      // Escalation fires at 45 min (no L1 yet): close 50% or 100%.
+      // IN PROFIT (posProfit > 0, L1 not hit): aggressive trail -- lock in $400-$800.
+      // AT LOSS / FLAT (posProfit <= 0, L1 not hit): protection floor at entry - 0.25R.
+      // Escalation at 45 min: close 50% if still no L1.
       //==============================================================
+      double posProfit=PositionGetDouble(POSITION_PROFIT);
+      double posLots  =PositionGetDouble(POSITION_VOLUME);
       if(InpQProtEnabled && mi>=0){
          // -- continuously update MFE / MAE (in R) --
          double excursion=(dir==1?(mkt-openP):(openP-mkt));
@@ -4681,46 +4689,69 @@ void ManagePositions()
                          " MFE="+DoubleToString(gMgMFE[mi],2)+"R"+
                          " MAE="+DoubleToString(gMgMAE[mi],2)+"R"+
                          " ProtMode="+(gMgQProtMode[mi]?"Y":"N")+
+                         " InProfit="+(posProfit>0?"Y":"N")+
                          " #"+IntegerToString((int)tk);
             if(InpDebugExits) Print(qLog);
          }
 
-         // -- PROTECTION MODE: age >= 30 min, L1 not yet hit --
+         // -- age >= 30 min, L1 not yet hit --
          if(ageMin>=InpQProtMinutes && !gMgP1Done[mi]){
             if(!gMgQProtMode[mi]){
                gMgQProtMode[mi]=true;
-               if(InpDebugExits) Print("=== QPROT ON #",tk," age=",ageMin,"m  MFE=",
-                  DoubleToString(gMgMFE[mi],2),"R MAE=",DoubleToString(gMgMAE[mi],2),"R");
+               if(InpDebugExits) Print("=== QPROT ON #",tk," age=",ageMin,"m  profit=",
+                  DoubleToString(posProfit,0),"  MFE=",DoubleToString(gMgMFE[mi],2),
+                  "R MAE=",DoubleToString(gMgMAE[mi],2),"R");
             }
-            // Compute protection SL = entry +/- (InpQProtSLFrac * initial risk)
-            double protDist=InpQProtSLFrac*risk;
-            double protSL=(dir==1)?(openP-protDist):(openP+protDist);
-            // Swing-based component: min/max of last 3 closed bars
-            double swingLevel=(dir==1)?DBL_MAX:-DBL_MAX;
-            for(int bb=1;bb<=3;bb++){
-               if(dir==1){
-                  double lo=iLow(_Symbol,_Period,bb);
-                  if(lo>0 && lo<swingLevel) swingLevel=lo;
-               } else {
-                  double hi=iHigh(_Symbol,_Period,bb);
-                  if(hi>0 && hi>swingLevel) swingLevel=hi;
+
+            double newSL=0;
+            if(posProfit>0){
+               // ---- PATH A: IN PROFIT -- aggressive trail ----
+               // Trail to just below the last 2 bars' swing low (long)
+               // or just above the last 2 bars' swing high (short).
+               // Adds 0.3 ATR buffer so normal noise doesn't stop it out.
+               double swing=(dir==1)?DBL_MAX:-DBL_MAX;
+               for(int bb=1;bb<=2;bb++){
+                  if(dir==1){ double lo=iLow(_Symbol,_Period,bb);  if(lo>0 && lo<swing) swing=lo; }
+                  else       { double hi=iHigh(_Symbol,_Period,bb); if(hi>0 && hi>swing) swing=hi; }
                }
-            }
-            if(swingLevel==DBL_MAX || swingLevel==-DBL_MAX) swingLevel=protSL; // fallback
-            // Apply: most conservative of the two (moves SL in favour direction only)
-            double newSL;
-            if(dir==1) newSL=NormPrice(MathMax(protSL,MathMin(swingLevel,openP)));
-            else       newSL=NormPrice(MathMin(protSL,MathMax(swingLevel,openP)));
-            // Only move SL if it improves on current (never widens)
-            bool improve=(dir==1&&newSL>curSL)||(dir==-1&&newSL<curSL);
-            if(improve){
-               double minD=MinStopDist()+_Point;
-               bool sideOK=(dir==1?newSL<mkt-minD:newSL>mkt+minD);
-               if(sideOK && trade.PositionModify(tk,newSL,0.0)){
-                  curSL=newSL;
-                  if(InpDebugExits) Print("=== QPROT SL -> ",DoubleToString(newSL,_Digits),
-                     "  (prot=",DoubleToString(protSL,_Digits),
-                     " swing=",DoubleToString(swingLevel,_Digits),")  #",tk);
+               if(swing==DBL_MAX||swing==-DBL_MAX) swing=mkt; // fallback
+               double trailBuf=atr*0.30;
+               newSL=(dir==1)?NormPrice(swing-trailBuf):NormPrice(swing+trailBuf);
+               // Only improve (never widen); must keep SL below/above market
+               bool improve=(dir==1&&newSL>curSL)||(dir==-1&&newSL<curSL);
+               if(improve){
+                  double minD=MinStopDist()+_Point;
+                  bool sideOK=(dir==1?newSL<mkt-minD:newSL>mkt+minD);
+                  if(sideOK && trade.PositionModify(tk,newSL,0.0)){
+                     curSL=newSL;
+                     if(InpDebugExits) Print("=== QPROT TRAIL -> ",DoubleToString(newSL,_Digits),
+                        "  (swing=",DoubleToString(swing,_Digits),
+                        " profit=$",DoubleToString(posProfit,0),")  #",tk);
+                  }
+               }
+            } else {
+               // ---- PATH B: FLAT / LOSING -- protection floor ----
+               // Tighten SL to entry - 0.25R using swing + fractional risk floor.
+               double protDist=InpQProtSLFrac*risk;
+               double protSL=(dir==1)?(openP-protDist):(openP+protDist);
+               double swingLevel=(dir==1)?DBL_MAX:-DBL_MAX;
+               for(int bb=1;bb<=3;bb++){
+                  if(dir==1){ double lo=iLow(_Symbol,_Period,bb);  if(lo>0 && lo<swingLevel) swingLevel=lo; }
+                  else       { double hi=iHigh(_Symbol,_Period,bb); if(hi>0 && hi>swingLevel) swingLevel=hi; }
+               }
+               if(swingLevel==DBL_MAX||swingLevel==-DBL_MAX) swingLevel=protSL;
+               if(dir==1) newSL=NormPrice(MathMax(protSL,MathMin(swingLevel,openP)));
+               else       newSL=NormPrice(MathMin(protSL,MathMax(swingLevel,openP)));
+               bool improve=(dir==1&&newSL>curSL)||(dir==-1&&newSL<curSL);
+               if(improve){
+                  double minD=MinStopDist()+_Point;
+                  bool sideOK=(dir==1?newSL<mkt-minD:newSL>mkt+minD);
+                  if(sideOK && trade.PositionModify(tk,newSL,0.0)){
+                     curSL=newSL;
+                     if(InpDebugExits) Print("=== QPROT PROTECT -> ",DoubleToString(newSL,_Digits),
+                        "  (prot=",DoubleToString(protSL,_Digits),
+                        " swing=",DoubleToString(swingLevel,_Digits),")  #",tk);
+                  }
                }
             }
          }
@@ -4732,17 +4763,15 @@ void ManagePositions()
             double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
             if(escalLots<minLot) escalLots=minLot;
             if(escalLots>=posLots){
-               // full exit
-               DbgExit("QPROT-escalation-full (age="+IntegerToString(ageMin)+"m, L1 not hit)",
+               DbgExit("QPROT-escalation-full (age="+IntegerToString(ageMin)+"m, L1 not hit, profit="+DoubleToString(posProfit,0)+")",
                        tk,dir,openP,mkt,rMult);
                if(!trade.PositionClose(tk) && MktClosed()) return;
                continue;
             } else {
-               // partial: close 50%, keep trailing the rest
                if(trade.PositionClosePartial(tk,escalLots) && InpDebugExits)
                   Print("=== QPROT PARTIAL 50% age=",ageMin,"m  R=",
-                        DoubleToString(rMult,2)," MFE=",DoubleToString(gMgMFE[mi],2),
-                        "R MAE=",DoubleToString(gMgMAE[mi],2),"R  #",tk);
+                        DoubleToString(rMult,2)," profit=$",DoubleToString(posProfit,0),
+                        " MFE=",DoubleToString(gMgMFE[mi],2),"R  #",tk);
             }
          }
       } // end quality protection block
@@ -4755,8 +4784,7 @@ void ManagePositions()
       // $6400 -> 20%
       // $8600 -> 20% + trailing stop
       //==============================================================
-      double posProfit=PositionGetDouble(POSITION_PROFIT);
-      double posLots=PositionGetDouble(POSITION_VOLUME);
+      // posProfit and posLots already computed above in quality block
       if(mi>=0 && posLots>0 && posProfit>0){
          double closeLots=NormalizeLot(posLots*0.20);  // 20% of current position
          if(closeLots<=0) closeLots=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
@@ -4817,11 +4845,17 @@ void ManagePositions()
 
       //--- EXIT 1: OWNERSHIP TRANSFER -- the curve that owns price has fully transferred
       //  to the opposing direction. This means the campaign we entered is no longer dominant;
-      //  a new campaign in the opposite direction has taken over. ---
+      //  a new campaign in the opposite direction has taken over.
+      //  CHURN FIX: death entries must hold for InpDeathMinHoldBars before this can fire --
+      //  because the death signal fires WHILE the macro curve still shows high dominance.
+      //  Exiting at bar 3 (InpMinHoldBars) guarantees R~0 exits. Give death entries more
+      //  time to see the actual ownership shift they predicted.
       if(InpExitOnOwnerTransfer){
+         int _holdRequired = (mi>=0 && gMgIsDeathEntry[mi]) ? InpDeathMinHoldBars : InpMinHoldBars;
+         bool _heldEnough = (heldBars >= _holdRequired);
          bool ownerOpposed=(cur_ownerDir!=0 && cur_ownerDir!=dir);
          bool domHigh=(cur_domTransfer>=InpOwnerTransferThresh);
-         if(ownerOpposed && domHigh){
+         if(ownerOpposed && domHigh && _heldEnough){
             DbgExit("ownership-transfer (owner "+cur_curveOwner+" "+f_waveDirLabel(cur_ownerDir)+" dom "+DoubleToString(cur_domTransfer,0)+"%)",tk,dir,openP,mkt,rMult);
             if(!trade.PositionClose(tk) && MktClosed()) return;
             continue;
