@@ -1118,8 +1118,8 @@ double ChartPivotLow(const double &l[], const int i, const int len)
 }
 double SMAlastN(const double &arr[], const int n)
 {
-   int sz=ArraySize(arr); if(sz==0) return(0); int cnt=(sz<n)?sz:n; double s=0;
-   for(int k=sz-cnt;k<sz;k++) s+=arr[k]; return(s/cnt);
+   int sz=ArraySize(arr); if(sz==0||n<=0) return(0); int cnt=(sz<n)?sz:n; double s=0;
+   for(int k=sz-cnt;k<sz;k++) s+=arr[k]; return(cnt>0?s/cnt:0);
 }
 
 //--- htf bias persistent (Sec3) ---
@@ -3649,7 +3649,7 @@ void ContextRun(const int bars)
 // EA INPUT ENUMS
 //==================================================================
 enum ENUM_SIG_SOURCE { SIG_ENGINE, SIG_V72, SIG_EITHER, SIG_BOTH };   // arrows / DOE / either(OR) / both(AND)
-enum ENUM_LOT_MODE   { LOT_FIXED, LOT_RISK_PCT };
+enum ENUM_LOT_MODE   { LOT_RISK_PCT };   // risk-based only (fixed lot removed)
 enum ENUM_SL_MODE    { SL_ENGINE, SL_ATR, SL_FIXED };
 //  SPEC AUDIT: ENUM_TP_MODE and ENUM_TRAIL_MODE removed (no TP targets, no trailing).
 enum ENUM_MIN_GRADE  { G_APLUS, G_A, G_B, G_C, G_D };
@@ -3673,9 +3673,9 @@ input bool          InpRequireHtfAlign  = false;        // Require HTF alignment
 input double        InpMinConfidence    = 0.0;          // Min DOE confidence % (0=off)
 
 input group "Letra37 EA - Risk / Sizing"
-input ENUM_LOT_MODE InpLotMode          = LOT_RISK_PCT; // Position sizing mode
-input double        InpFixedLot         = 0.10;         // Fixed lot (LOT_FIXED)
-input double        InpRiskPercent      = 1.0;          // Risk % of equity (LOT_RISK_PCT)
+input ENUM_LOT_MODE InpLotMode          = LOT_RISK_PCT; // Position sizing: risk-based only
+input double        InpMaxRiskDollars    = 600.0;        // HARD CAP: max dollar risk per trade (never exceeded regardless of SL size or equity %)
+input double        InpRiskPercent      = 1.0;          // Risk % of equity per trade (capped at InpMaxRiskDollars)
 input double        InpMaxLot           = 2.0;          // Hard lot cap (reduced from 5: 5 lots/100k was ~3-5% risk/trade -> 96% DD)
 input int           InpMaxSpreadPoints  = 0;            // Max spread (points); 0=off (gold spreads are large!)
 
@@ -3894,14 +3894,15 @@ double MoneyPerPointPerLot()
 
 double CalcLot(const double entry,const double sl)
 {
-   if(InpLotMode==LOT_FIXED) return(NormalizeLot(InpFixedLot));
-   double riskPct=(InpSmallAccount? InpSmallAcctRiskPct : InpRiskPercent);   // small-account mode uses its own (lower) risk %
-   double riskMoney=gAccount.Equity()*riskPct/100.0;
+   // Fixed lot mode REMOVED — risk-based only with $600 hard cap
+   double riskPct=(InpSmallAccount? InpSmallAcctRiskPct : InpRiskPercent);
+   double equityRisk=gAccount.Equity()*riskPct/100.0;
+   double riskMoney=fmin2(equityRisk, InpMaxRiskDollars);
    double slPts=MathAbs(entry-sl)/_Point;
    double mpp=MoneyPerPointPerLot();
-   if(slPts<1 || mpp<=0) return(NormalizeLot(InpFixedLot));
-   double lot=riskMoney/(slPts*mpp);
-   return(NormalizeLot(lot));                                 // NormalizeLot enforces broker min/step and the InpMaxLot cap
+   if(slPts<1 || mpp<=0) return(NormalizeLot(0.01));  // minimum if SL is bad
+   double lot=riskMoney/(slPts*fmax2(mpp,1e-10));
+   return(NormalizeLot(lot));
 }
 
 //--- ARC v2 apex builder (SYMPHONY port): uses the ARC inputs (declared in the EA section) and
