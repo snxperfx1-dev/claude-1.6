@@ -4781,8 +4781,11 @@ void ManagePositions()
       // $900 -> 20% + breakeven SL
       // $2300 -> 20%
       // $4400 -> 20%
-      // $6400 -> 20%
-      // $8600 -> 20% + trailing stop
+      // $1600 -> 20%
+      // $3300 -> 20%
+      // $4500 -> 20%
+      // $6000 -> 20%
+      // $7000+ -> aggressive swing trail
       //==============================================================
       // posProfit and posLots already computed above in quality block
       if(mi>=0 && posLots>0 && posProfit>0){
@@ -4800,41 +4803,63 @@ void ManagePositions()
                if(trade.PositionModify(tk,beSL,0.0))
                   if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits));
          }
-         // Level 2 -- $2300 profit: close 20%
-         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=2300.0){
+         // Level 2 -- $1600 profit: close 20%
+         else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=1600.0){
             gMgP2Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L2 @$2300 closed ",DoubleToString(closeLots,2)," lots");
+               if(InpDebugExits) Print("=== PARTIAL L2 @$1600 closed ",DoubleToString(closeLots,2)," lots");
          }
-         // Level 3 -- $4400 profit: close 20%
-         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=4400.0){
+         // Level 3 -- $3300 profit: close 20%
+         else if(gMgP2Done[mi] && !gMgP3Done[mi] && posProfit>=3300.0){
             gMgP3Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L3 @$4400 closed ",DoubleToString(closeLots,2)," lots");
+               if(InpDebugExits) Print("=== PARTIAL L3 @$3300 closed ",DoubleToString(closeLots,2)," lots");
          }
-         // Level 4 -- $6400 profit: close 20%
-         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=6400.0){
+         // Level 4 -- $4500 profit: close 20%
+         else if(gMgP3Done[mi] && !gMgP4Done[mi] && posProfit>=4500.0){
             gMgP4Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L4 @$6400 closed ",DoubleToString(closeLots,2)," lots");
+               if(InpDebugExits) Print("=== PARTIAL L4 @$4500 closed ",DoubleToString(closeLots,2)," lots");
          }
-         // Level 5 -- $8600 profit: close 20% + activate trailing stop
-         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=8600.0){
+         // Level 5 -- $6000 profit: close 20%
+         else if(gMgP4Done[mi] && !gMgP5Done[mi] && posProfit>=6000.0){
             gMgP5Done[mi]=true;
-            gMgTrailing[mi]=true;
-            gMgTrailSL[mi]=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
-               if(InpDebugExits) Print("=== PARTIAL L5 @$8600 closed ",DoubleToString(closeLots,2)," lots + trailing activated");
+               if(InpDebugExits) Print("=== PARTIAL L5 @$6000 closed ",DoubleToString(closeLots,2)," lots");
          }
 
-         // Trailing stop management (active after level 5)
-         if(mi>=0 && gMgTrailing[mi]){
-            double newTrail=(dir==1)?(mkt-atr*2.0):(mkt+atr*2.0);
+         // Aggressive trailing -- activates once profit crosses $7000
+         // Uses swing structure (last 2 bars + 0.3 ATR buffer) -- tighter than ATR*2
+         if(!gMgTrailing[mi] && posProfit>=7000.0){
+            gMgTrailing[mi]=true;
+            // Seed trail at last 2-bar swing
+            double seedSwing=(dir==1)?DBL_MAX:-DBL_MAX;
+            for(int bb=1;bb<=2;bb++){
+               if(dir==1){ double lo=iLow(_Symbol,_Period,bb);  if(lo>0&&lo<seedSwing) seedSwing=lo; }
+               else       { double hi=iHigh(_Symbol,_Period,bb); if(hi>0&&hi>seedSwing) seedSwing=hi; }
+            }
+            if(seedSwing==DBL_MAX||seedSwing==-DBL_MAX) seedSwing=(dir==1)?(mkt-atr*1.0):(mkt+atr*1.0);
+            gMgTrailSL[mi]=(dir==1)?seedSwing-atr*0.30:seedSwing+atr*0.30;
+            if(InpDebugExits) Print("=== AGGRESSIVE TRAIL ON @$7000  seedSL=",DoubleToString(gMgTrailSL[mi],_Digits));
+         }
+         if(gMgTrailing[mi]){
+            // Update trail every bar: last 2-bar swing + 0.3 ATR buffer
+            double swing=(dir==1)?DBL_MAX:-DBL_MAX;
+            for(int bb=1;bb<=2;bb++){
+               if(dir==1){ double lo=iLow(_Symbol,_Period,bb);  if(lo>0&&lo<swing) swing=lo; }
+               else       { double hi=iHigh(_Symbol,_Period,bb); if(hi>0&&hi>swing) swing=hi; }
+            }
+            if(swing==DBL_MAX||swing==-DBL_MAX) swing=(dir==1)?(mkt-atr*1.0):(mkt+atr*1.0);
+            double newTrail=(dir==1)?NormPrice(swing-atr*0.30):NormPrice(swing+atr*0.30);
             bool improved=(dir==1&&newTrail>gMgTrailSL[mi])||(dir==-1&&newTrail<gMgTrailSL[mi]);
-            if(improved && ((dir==1&&newTrail>curSL)||(dir==-1&&newTrail<curSL))){
-               gMgTrailSL[mi]=newTrail;
-               if(trade.PositionModify(tk,NormPrice(newTrail),0.0))
-                  if(InpDebugExits) Print("=== TRAIL SL moved to ",DoubleToString(newTrail,_Digits));
+            if(improved){
+               double minD=MinStopDist()+_Point;
+               bool sideOK=(dir==1?newTrail<mkt-minD:newTrail>mkt+minD);
+               if(sideOK && trade.PositionModify(tk,newTrail,0.0)){
+                  gMgTrailSL[mi]=newTrail;
+                  if(InpDebugExits) Print("=== TRAIL SL -> ",DoubleToString(newTrail,_Digits),
+                     "  (swing=",DoubleToString(swing,_Digits),")  profit=$",DoubleToString(posProfit,0));
+               }
             }
          }
       }
