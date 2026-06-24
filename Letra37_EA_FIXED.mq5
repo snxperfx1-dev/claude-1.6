@@ -3293,9 +3293,14 @@ void ContextRun(const int bars)
    //  Wyckoff terminal sequence: count recursive change-of-character shifts WHILE inside the
    //  flip zone (the spring/test/LPS1/LPS2 - "always four"). Entry matures on the completing
    //  shift, not the first strike. Compression sets how many shifts to expect (tight -> fewer/faster).
+   //  RESET: when price expands away OR when an expansion phase begins (not just !ctx_atFlip).
+   //  ACTIVATE: only during transition/terminal phases at the flip zone.
    int _expShifts=(int)clamp(nz((double)cur_expRecDepth,3.0),3.0,5.0);   // F72: Wyckoff terminal is ~4 shifts, min 3
    if(ctx_fuMerged) _expShifts=(int)MathMin(_expShifts+3,7);   // Principle 9: camp merged back -> cycle still owes ~3 more recursions
-   if(!ctx_atFlip){ g_termActive=false; g_termShifts=0; ctx_termM1Cycles=0; g_termPrevDirM1=cur_dirM1; }
+   // RESET on: leaving flip zone OR expansion phase begins (wave is running, not transitioning)
+   bool _inExpansionPhase = (ie1a_currentPhase=="Expansion"||ie1a_currentPhase=="New High"||ie1a_currentPhase=="New Low"||
+        ie1a_currentPhase=="Expansion Pre-Convexity"||ie1a_currentPhase=="Expansion Induction"||ie1a_currentPhase=="Expansion Liquidity");
+   if(!ctx_atFlip || _inExpansionPhase){ g_termActive=false; g_termShifts=0; ctx_termM1Cycles=0; g_termPrevDirM1=cur_dirM1; }
    else {
       if(!g_termActive){ g_termActive=true; g_termShifts=0; g_termPrevDirM5=cur_dirM5; ctx_termM1Cycles=0; g_termPrevDirM1=cur_dirM1; }
       if(cur_dirM5!=0 && cur_dirM5!=g_termPrevDirM5){ g_termShifts++; g_termPrevDirM5=cur_dirM5; }   // M5 CHoCH inside the zone = one shift
