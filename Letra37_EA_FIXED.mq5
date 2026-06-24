@@ -1936,11 +1936,13 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Layer 2 entry: price returns to demand/supply zone after the initial flip trade
    bool _huntLongZone = g_huntMode==1 && !naf(g_huntDemandHi) && cl<=g_huntDemandHi+atr*0.3 && cl>=g_huntDemandLo-atr*0.5;
    bool _huntShortZone = g_huntMode==-1 && !naf(g_huntDemandLo) && cl>=g_huntDemandLo-atr*0.3 && cl<=g_huntDemandHi+atr*0.5;
-   // Relaxed conditions for continuation: macro direction + impulse/FU reaction + not locked
+   // Relaxed conditions for continuation: hunt direction (thesis confirmed) + impulse/FU reaction + not locked
    bool _huntReactionLong  = bullImpulse || bullMicroImpulse || _fuConfirmLong || bullConvShift;
    bool _huntReactionShort = bearImpulse || bearMicroImpulse || _fuConfirmShort || bearConvShift;
-   bool huntLongSignal  = showSignals && _huntLongZone && _huntReactionLong && _macroDir==1 && !signalLocked && !withinLongLock && (i-g_huntActivatedBar)>5;
-   bool huntShortSignal = showSignals && _huntShortZone && _huntReactionShort && _macroDir==-1 && !signalLocked && !withinShortLock && (i-g_huntActivatedBar)>5;
+   // Hunt uses g_huntMode direction (Layer 1 already confirmed thesis), NOT _macroDir
+   // This allows anticipatory sells (H4 still bull) to continue hunting at supply
+   bool huntLongSignal  = showSignals && _huntLongZone && _huntReactionLong && g_huntMode==1 && !signalLocked && !withinLongLock && (i-g_huntActivatedBar)>5;
+   bool huntShortSignal = showSignals && _huntShortZone && _huntReactionShort && g_huntMode==-1 && !signalLocked && !withinShortLock && (i-g_huntActivatedBar)>5;
 
    // Merge Layer 1 + Layer 2 signals
    if(huntLongSignal && !longSignal)  { longSignal=true; }
