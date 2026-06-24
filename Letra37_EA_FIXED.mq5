@@ -1009,20 +1009,17 @@ double cur_distFlipAtr=0.0;    // distance to HTF flip/objective in ATR
 double cur_ctxFlipTop=NA, cur_ctxFlipBot=NA, cur_ctxFlipMid=NA;
 //--- PER-TIMEFRAME CURVE CONTEXT (ported from V60 — origin→extreme→flip per curve) ---
 // Each curve on each TF has: origin (seN_inv), extreme (swing hi/lo), flip zone (seN_ft/fb)
-// The algo uses ALL of these to know which curves it's working within.
-struct CurveCtx {
-   int    dir;        // wave direction on this rung
-   double origin;     // curve birth / invalidation (seN_inv)
-   double extreme;    // structural peak (bull) or trough (bear)
-   double flipTop;    // flip zone top (seN_ft)
-   double flipBot;    // flip zone bottom (seN_fb)
-   double flipMid;    // flip zone midpoint
-   double wp;         // wave progress %
-   double dom;        // dominance transfer %
-   double comp;       // compression %
-   int    phase;      // phase code
-};
-CurveCtx cur_curves[6];  // [0]=M1, [1]=M3, [2]=M5, [3]=M15, [4]=H1, [5]=H4
+// Parallel arrays: [0]=M1, [1]=M3, [2]=M5, [3]=M15, [4]=H1, [5]=H4
+int    cur_cv_dir[6];
+double cur_cv_origin[6];
+double cur_cv_extreme[6];
+double cur_cv_flipTop[6];
+double cur_cv_flipBot[6];
+double cur_cv_flipMid[6];
+double cur_cv_wp[6];
+double cur_cv_dom[6];
+double cur_cv_comp[6];
+int    cur_cv_phase[6];
 //--- prev-bar phase code per rung (persist across recomputes; NOT reset by ResetState) ---
 int    gPrevPhM1=-1,gPrevPhM3=-1,gPrevPhM5=-1,gPrevPhM15=-1,gPrevPhH1=-1,gPrevPhH4=-1;
 string cur_l0phase,cur_l1phase,cur_l2phase,cur_l3phase,cur_l4phase;
@@ -1925,41 +1922,41 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // --- POPULATE PER-TIMEFRAME CURVE CONTEXT (V60 port: origin→extreme→flip per curve) ---
    // Each curve knows: where it was born, where its peak/trough is, and its flip zone.
    // This gives the algo full awareness of which curves it's working within.
-   cur_curves[0].dir=m1_dir; cur_curves[0].origin=se1_inv;
-   cur_curves[0].extreme=(m1_dir==1?nz(MapVal(se1.t,se1.sh,se1.n,ct)):m1_dir==-1?nz(MapVal(se1.t,se1.sl,se1.n,ct)):NA);
-   cur_curves[0].flipTop=MapVal(se1.t,se1.ft,se1.n,ct); cur_curves[0].flipBot=MapVal(se1.t,se1.fb,se1.n,ct);
-   cur_curves[0].flipMid=(!naf(cur_curves[0].flipTop)&&!naf(cur_curves[0].flipBot))?(cur_curves[0].flipTop+cur_curves[0].flipBot)/2.0:NA;
-   cur_curves[0].wp=nz(MapVal(se1.t,se1.wp,se1.n,ct)); cur_curves[0].dom=_inl_dom_m1; cur_curves[0].comp=nz(MapVal(se1.t,se1.comp,se1.n,ct)); cur_curves[0].phase=_inl_ph_m1;
+   cur_cv_dir[0]=m1_dir; cur_cv_origin[0]=se1_inv;
+   cur_cv_extreme[0]=(m1_dir==1?nz(MapVal(se1.t,se1.sh,se1.n,ct)):m1_dir==-1?nz(MapVal(se1.t,se1.sl,se1.n,ct)):NA);
+   cur_cv_flipTop[0]=MapVal(se1.t,se1.ft,se1.n,ct); cur_cv_flipBot[0]=MapVal(se1.t,se1.fb,se1.n,ct);
+   cur_cv_flipMid[0]=(!naf(cur_cv_flipTop[0])&&!naf(cur_cv_flipBot[0]))?(cur_cv_flipTop[0]+cur_cv_flipBot[0])/2.0:NA;
+   cur_cv_wp[0]=nz(MapVal(se1.t,se1.wp,se1.n,ct)); cur_cv_dom[0]=_inl_dom_m1; cur_cv_comp[0]=nz(MapVal(se1.t,se1.comp,se1.n,ct)); cur_cv_phase[0]=_inl_ph_m1;
 
-   cur_curves[1].dir=l3_dir; cur_curves[1].origin=se3_inv;
-   cur_curves[1].extreme=(l3_dir==1?nz(MapVal(se3.t,se3.sh,se3.n,ct)):l3_dir==-1?nz(MapVal(se3.t,se3.sl,se3.n,ct)):NA);
-   cur_curves[1].flipTop=MapVal(se3.t,se3.ft,se3.n,ct); cur_curves[1].flipBot=MapVal(se3.t,se3.fb,se3.n,ct);
-   cur_curves[1].flipMid=(!naf(cur_curves[1].flipTop)&&!naf(cur_curves[1].flipBot))?(cur_curves[1].flipTop+cur_curves[1].flipBot)/2.0:NA;
-   cur_curves[1].wp=nz(MapVal(se3.t,se3.wp,se3.n,ct)); cur_curves[1].dom=_inl_dom_m3; cur_curves[1].comp=nz(MapVal(se3.t,se3.comp,se3.n,ct)); cur_curves[1].phase=_inl_ph_m3;
+   cur_cv_dir[1]=l3_dir; cur_cv_origin[1]=se3_inv;
+   cur_cv_extreme[1]=(l3_dir==1?nz(MapVal(se3.t,se3.sh,se3.n,ct)):l3_dir==-1?nz(MapVal(se3.t,se3.sl,se3.n,ct)):NA);
+   cur_cv_flipTop[1]=MapVal(se3.t,se3.ft,se3.n,ct); cur_cv_flipBot[1]=MapVal(se3.t,se3.fb,se3.n,ct);
+   cur_cv_flipMid[1]=(!naf(cur_cv_flipTop[1])&&!naf(cur_cv_flipBot[1]))?(cur_cv_flipTop[1]+cur_cv_flipBot[1])/2.0:NA;
+   cur_cv_wp[1]=nz(MapVal(se3.t,se3.wp,se3.n,ct)); cur_cv_dom[1]=_inl_dom_m3; cur_cv_comp[1]=nz(MapVal(se3.t,se3.comp,se3.n,ct)); cur_cv_phase[1]=_inl_ph_m3;
 
-   cur_curves[2].dir=l0_dir; cur_curves[2].origin=se5_inv;
-   cur_curves[2].extreme=(l0_dir==1?nz(MapVal(se5.t,se5.sh,se5.n,ct)):l0_dir==-1?nz(MapVal(se5.t,se5.sl,se5.n,ct)):NA);
-   cur_curves[2].flipTop=MapVal(se5.t,se5.ft,se5.n,ct); cur_curves[2].flipBot=MapVal(se5.t,se5.fb,se5.n,ct);
-   cur_curves[2].flipMid=(!naf(cur_curves[2].flipTop)&&!naf(cur_curves[2].flipBot))?(cur_curves[2].flipTop+cur_curves[2].flipBot)/2.0:NA;
-   cur_curves[2].wp=nz(se5_wp); cur_curves[2].dom=_inl_dom_m5; cur_curves[2].comp=nz(MapVal(se5.t,se5.comp,se5.n,ct)); cur_curves[2].phase=_inl_ph_m5;
+   cur_cv_dir[2]=l0_dir; cur_cv_origin[2]=se5_inv;
+   cur_cv_extreme[2]=(l0_dir==1?nz(MapVal(se5.t,se5.sh,se5.n,ct)):l0_dir==-1?nz(MapVal(se5.t,se5.sl,se5.n,ct)):NA);
+   cur_cv_flipTop[2]=MapVal(se5.t,se5.ft,se5.n,ct); cur_cv_flipBot[2]=MapVal(se5.t,se5.fb,se5.n,ct);
+   cur_cv_flipMid[2]=(!naf(cur_cv_flipTop[2])&&!naf(cur_cv_flipBot[2]))?(cur_cv_flipTop[2]+cur_cv_flipBot[2])/2.0:NA;
+   cur_cv_wp[2]=nz(se5_wp); cur_cv_dom[2]=_inl_dom_m5; cur_cv_comp[2]=nz(MapVal(se5.t,se5.comp,se5.n,ct)); cur_cv_phase[2]=_inl_ph_m5;
 
-   cur_curves[3].dir=l1_dir; cur_curves[3].origin=se15_inv;
-   cur_curves[3].extreme=(l1_dir==1?nz(MapVal(se15.t,se15.sh,se15.n,ct)):l1_dir==-1?nz(MapVal(se15.t,se15.sl,se15.n,ct)):NA);
-   cur_curves[3].flipTop=MapVal(se15.t,se15.ft,se15.n,ct); cur_curves[3].flipBot=MapVal(se15.t,se15.fb,se15.n,ct);
-   cur_curves[3].flipMid=(!naf(cur_curves[3].flipTop)&&!naf(cur_curves[3].flipBot))?(cur_curves[3].flipTop+cur_curves[3].flipBot)/2.0:NA;
-   cur_curves[3].wp=nz(se15_wp); cur_curves[3].dom=_inl_dom_m15; cur_curves[3].comp=nz(MapVal(se15.t,se15.comp,se15.n,ct)); cur_curves[3].phase=_inl_ph_m15;
+   cur_cv_dir[3]=l1_dir; cur_cv_origin[3]=se15_inv;
+   cur_cv_extreme[3]=(l1_dir==1?nz(MapVal(se15.t,se15.sh,se15.n,ct)):l1_dir==-1?nz(MapVal(se15.t,se15.sl,se15.n,ct)):NA);
+   cur_cv_flipTop[3]=MapVal(se15.t,se15.ft,se15.n,ct); cur_cv_flipBot[3]=MapVal(se15.t,se15.fb,se15.n,ct);
+   cur_cv_flipMid[3]=(!naf(cur_cv_flipTop[3])&&!naf(cur_cv_flipBot[3]))?(cur_cv_flipTop[3]+cur_cv_flipBot[3])/2.0:NA;
+   cur_cv_wp[3]=nz(se15_wp); cur_cv_dom[3]=_inl_dom_m15; cur_cv_comp[3]=nz(MapVal(se15.t,se15.comp,se15.n,ct)); cur_cv_phase[3]=_inl_ph_m15;
 
-   cur_curves[4].dir=l2_dir; cur_curves[4].origin=se60_inv;
-   cur_curves[4].extreme=(l2_dir==1?nz(MapVal(se60.t,se60.sh,se60.n,ct)):l2_dir==-1?nz(MapVal(se60.t,se60.sl,se60.n,ct)):NA);
-   cur_curves[4].flipTop=MapVal(se60.t,se60.ft,se60.n,ct); cur_curves[4].flipBot=MapVal(se60.t,se60.fb,se60.n,ct);
-   cur_curves[4].flipMid=(!naf(cur_curves[4].flipTop)&&!naf(cur_curves[4].flipBot))?(cur_curves[4].flipTop+cur_curves[4].flipBot)/2.0:NA;
-   cur_curves[4].wp=nz(se60_wp); cur_curves[4].dom=_inl_dom_h1; cur_curves[4].comp=nz(MapVal(se60.t,se60.comp,se60.n,ct)); cur_curves[4].phase=_inl_ph_h1;
+   cur_cv_dir[4]=l2_dir; cur_cv_origin[4]=se60_inv;
+   cur_cv_extreme[4]=(l2_dir==1?nz(MapVal(se60.t,se60.sh,se60.n,ct)):l2_dir==-1?nz(MapVal(se60.t,se60.sl,se60.n,ct)):NA);
+   cur_cv_flipTop[4]=MapVal(se60.t,se60.ft,se60.n,ct); cur_cv_flipBot[4]=MapVal(se60.t,se60.fb,se60.n,ct);
+   cur_cv_flipMid[4]=(!naf(cur_cv_flipTop[4])&&!naf(cur_cv_flipBot[4]))?(cur_cv_flipTop[4]+cur_cv_flipBot[4])/2.0:NA;
+   cur_cv_wp[4]=nz(se60_wp); cur_cv_dom[4]=_inl_dom_h1; cur_cv_comp[4]=nz(MapVal(se60.t,se60.comp,se60.n,ct)); cur_cv_phase[4]=_inl_ph_h1;
 
-   cur_curves[5].dir=l4_dir; cur_curves[5].origin=se240_inv;
-   cur_curves[5].extreme=(l4_dir==1?nz(MapVal(se240.t,se240.sh,se240.n,ct)):l4_dir==-1?nz(MapVal(se240.t,se240.sl,se240.n,ct)):NA);
-   cur_curves[5].flipTop=MapVal(se240.t,se240.ft,se240.n,ct); cur_curves[5].flipBot=MapVal(se240.t,se240.fb,se240.n,ct);
-   cur_curves[5].flipMid=(!naf(cur_curves[5].flipTop)&&!naf(cur_curves[5].flipBot))?(cur_curves[5].flipTop+cur_curves[5].flipBot)/2.0:NA;
-   cur_curves[5].wp=nz(MapVal(se240.t,se240.wp,se240.n,ct)); cur_curves[5].dom=nz(MapVal(se240.t,se240.dom,se240.n,ct)); cur_curves[5].comp=nz(MapVal(se240.t,se240.comp,se240.n,ct)); cur_curves[5].phase=(int)nz(se240_ph);
+   cur_cv_dir[5]=l4_dir; cur_cv_origin[5]=se240_inv;
+   cur_cv_extreme[5]=(l4_dir==1?nz(MapVal(se240.t,se240.sh,se240.n,ct)):l4_dir==-1?nz(MapVal(se240.t,se240.sl,se240.n,ct)):NA);
+   cur_cv_flipTop[5]=MapVal(se240.t,se240.ft,se240.n,ct); cur_cv_flipBot[5]=MapVal(se240.t,se240.fb,se240.n,ct);
+   cur_cv_flipMid[5]=(!naf(cur_cv_flipTop[5])&&!naf(cur_cv_flipBot[5]))?(cur_cv_flipTop[5]+cur_cv_flipBot[5])/2.0:NA;
+   cur_cv_wp[5]=nz(MapVal(se240.t,se240.wp,se240.n,ct)); cur_cv_dom[5]=nz(MapVal(se240.t,se240.dom,se240.n,ct)); cur_cv_comp[5]=nz(MapVal(se240.t,se240.comp,se240.n,ct)); cur_cv_phase[5]=(int)nz(se240_ph);
 
    // GATE 7: MACRO DIRECTION AUTHORITY — prevents counter-HTF garbage
    // The spec says: "Which curve currently owns price?" The HTF curve determines direction.
@@ -4077,9 +4074,9 @@ void TryEnter()
       // Find the nearest flip zone from all curves (closest to price = most relevant context)
       double _nearestFlipMid=NA; double _nearestDist=DBL_MAX;
       for(int _ci=0;_ci<6;_ci++){
-         if(!naf(cur_curves[_ci].flipMid)){
-            double _d=MathAbs(_bid-cur_curves[_ci].flipMid);
-            if(_d<_nearestDist){ _nearestDist=_d; _nearestFlipMid=cur_curves[_ci].flipMid; }
+         if(!naf(cur_cv_flipMid[_ci])){
+            double _d=MathAbs(_bid-cur_cv_flipMid[_ci]);
+            if(_d<_nearestDist){ _nearestDist=_d; _nearestFlipMid=cur_cv_flipMid[_ci]; }
          }
       }
       // Fallback to the primary HTF context
