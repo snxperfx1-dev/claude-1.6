@@ -1876,13 +1876,32 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _confirmationLong  = _fuConfirmLong || _structConfirmLong;
    bool _confirmationShort = _fuConfirmShort || _structConfirmShort;
 
-   // GATE 6: DIRECTIONAL PRICE POSITION — the critical zone-edge rule:
-   //   BUYS must be BELOW the flip zone midpoint (at/near demand = lower FU edge)
-   //   SELLS must be ABOVE the flip zone midpoint (at/near supply = upper FU edge)
-   // The bad buy entered ABOVE the zone — it should have been a sell zone, not a buy zone.
-   double _fzMidEntry = (!naf(g_flipTop)&&!naf(g_flipBot)) ? (g_flipTop+g_flipBot)/2.0 : NA;
-   bool _correctSideLong  = naf(_fzMidEntry) || (cl <= _fzMidEntry + atr*0.3);  // at/below mid (demand side)
-   bool _correctSideShort = naf(_fzMidEntry) || (cl >= _fzMidEntry - atr*0.3);  // at/above mid (supply side)
+   // GATE 6: MULTI-CURVE FLIP CONTEXT — the universal rule from spec:
+   //   ALL curves have a flip zone. BUYS happen BELOW it. SELLS happen ABOVE it.
+   //   Use the highest available TF flip zone as context authority (H4 > H1 > M15 > M5).
+   //   This ensures the algo always knows WHERE it is relative to the key reversal point.
+   double _ctx_ft=NA, _ctx_fb=NA, _ctx_flipMid=NA;
+   // H4 flip zone (highest authority)
+   double _ft_h4=MapVal(se240.t,se240.ft,se240.n,ct), _fb_h4=MapVal(se240.t,se240.fb,se240.n,ct);
+   if(!naf(_ft_h4)&&!naf(_fb_h4)){ _ctx_ft=_ft_h4; _ctx_fb=_fb_h4; _ctx_flipMid=(_ft_h4+_fb_h4)/2.0; }
+   // Fallback H1
+   if(naf(_ctx_flipMid)){
+      double _ft_h1=MapVal(se60.t,se60.ft,se60.n,ct), _fb_h1=MapVal(se60.t,se60.fb,se60.n,ct);
+      if(!naf(_ft_h1)&&!naf(_fb_h1)){ _ctx_ft=_ft_h1; _ctx_fb=_fb_h1; _ctx_flipMid=(_ft_h1+_fb_h1)/2.0; }
+   }
+   // Fallback M15
+   if(naf(_ctx_flipMid)){
+      double _ft_m15=MapVal(se15.t,se15.ft,se15.n,ct), _fb_m15=MapVal(se15.t,se15.fb,se15.n,ct);
+      if(!naf(_ft_m15)&&!naf(_fb_m15)){ _ctx_ft=_ft_m15; _ctx_fb=_fb_m15; _ctx_flipMid=(_ft_m15+_fb_m15)/2.0; }
+   }
+   // Fallback M5 (chart-level spawn)
+   if(naf(_ctx_flipMid) && !naf(g_flipTop) && !naf(g_flipBot)){
+      _ctx_ft=g_flipTop; _ctx_fb=g_flipBot; _ctx_flipMid=(g_flipTop+g_flipBot)/2.0;
+   }
+   // FLIP CONTEXT RULE: below flip = buy territory, above flip = sell territory
+   // Allow small buffer (0.3 ATR) for entries right at the zone edge
+   bool _flipCtxAllowLong  = naf(_ctx_flipMid) || (cl <= _ctx_flipMid + atr*0.3);
+   bool _flipCtxAllowShort = naf(_ctx_flipMid) || (cl >= _ctx_flipMid - atr*0.3);
 
    // GATE 7: MACRO DIRECTION AUTHORITY — prevents counter-HTF garbage
    // The spec says: "Which curve currently owns price?" The HTF curve determines direction.
@@ -1906,8 +1925,8 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
         ie1a_currentPhase=="Demand Return");
    bool _terminalPhaseShort = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
         ie1a_currentPhase=="Supply Return");
-   bool beliefEntryLong=_allowLong&&direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_correctSideLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
-   bool beliefEntryShort=_allowShort&&direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_correctSideShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryLong=_allowLong&&direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&_flipCtxAllowLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryShort=_allowShort&&direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&_flipCtxAllowShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
    bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
 
@@ -1941,8 +1960,9 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    bool _huntReactionShort = bearImpulse || bearMicroImpulse || _fuConfirmShort || bearConvShift;
    // Hunt uses g_huntMode direction (Layer 1 already confirmed thesis), NOT _macroDir
    // This allows anticipatory sells (H4 still bull) to continue hunting at supply
-   bool huntLongSignal  = showSignals && _huntLongZone && _huntReactionLong && g_huntMode==1 && !signalLocked && !withinLongLock && (i-g_huntActivatedBar)>5;
-   bool huntShortSignal = showSignals && _huntShortZone && _huntReactionShort && g_huntMode==-1 && !signalLocked && !withinShortLock && (i-g_huntActivatedBar)>5;
+   // ALSO enforce flip context: hunt buys below flip, hunt sells above flip
+   bool huntLongSignal  = showSignals && _huntLongZone && _huntReactionLong && _flipCtxAllowLong && g_huntMode==1 && !signalLocked && !withinLongLock && (i-g_huntActivatedBar)>5;
+   bool huntShortSignal = showSignals && _huntShortZone && _huntReactionShort && _flipCtxAllowShort && g_huntMode==-1 && !signalLocked && !withinShortLock && (i-g_huntActivatedBar)>5;
 
    // Merge Layer 1 + Layer 2 signals
    if(huntLongSignal && !longSignal)  { longSignal=true; }
