@@ -1827,34 +1827,58 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    double _inl_dom_h1 =nz(MapVal(se60.t,se60.dom,se60.n,ct));
    int _inl_ph_m1=(int)nz(se1_ph), _inl_ph_m3=(int)nz(se3_ph), _inl_ph_m5=(int)nz(se5_ph);
    int _inl_ph_m15=(int)nz(se15_ph), _inl_ph_h1=(int)nz(se60_ph);
-   // A rung is in terminal sequence: phases 9(Retr PreConv),10(Retr Induction),11(Retr Liquidity)
-   // A rung is in Return: phases 12(Demand Return),13(Supply Return)
+
+   // ===== CALIBRATED ENTRY QUALITY GATES (per Image 1+2 reference pattern) =====
+   // The PERFECT sell has: H4 Bear, dom=100%, atFlip=Y, ALL TFs bearish, terminal DONE, FU=Y
+   // We filter out garbage entries that don't have these characteristics.
+
+   // GATE 1: FLIP ZONE PROXIMITY — must be AT or INSIDE the flip zone (not random retracement)
+   bool _atFlipZone = g_nearFlipzone || g_closeInside;
+
+   // GATE 2: HIGH DOMINANCE — at least 75% on M5+ (not weak 50% on M1 noise)
+   // The perfect sell had dom=100%. We require 75% minimum on a meaningful rung.
+   bool _highDomM5plus = _inl_dom_m5>=75.0 || _inl_dom_m15>=75.0 || _inl_dom_h1>=75.0;
+
+   // GATE 3: MULTI-TF ALIGNMENT — at least 3 of 4 key TFs (M5, M15, H1, H4) agree
+   // The perfect sell had M1+M5+H1+H4 all bearish. We require 3+ aligned.
+   int _tfAlignLong  = (l0_dir==1?1:0)+(l1_dir==1?1:0)+(l2_dir==1?1:0)+(l4_dir==1?1:0);
+   int _tfAlignShort = (l0_dir==-1?1:0)+(l1_dir==-1?1:0)+(l2_dir==-1?1:0)+(l4_dir==-1?1:0);
+   bool _multiTfLong  = _tfAlignLong >= 3;
+   bool _multiTfShort = _tfAlignShort >= 3;
+
+   // GATE 4: TERMINAL SEQUENCE — must be in terminal phases or Return (not early expansion/retracement)
    bool _anyRungInReturn = (_inl_ph_m1==12||_inl_ph_m1==13)||(_inl_ph_m3==12||_inl_ph_m3==13)||
         (_inl_ph_m5==12||_inl_ph_m5==13)||(_inl_ph_m15==12||_inl_ph_m15==13)||(_inl_ph_h1==12||_inl_ph_h1==13);
    bool _anyRungInTerminal = (_inl_ph_m1>=9&&_inl_ph_m1<=11)||(_inl_ph_m3>=9&&_inl_ph_m3<=11)||
         (_inl_ph_m5>=9&&_inl_ph_m5<=11)||(_inl_ph_m15>=9&&_inl_ph_m15<=11)||(_inl_ph_h1>=9&&_inl_ph_h1<=11);
-   // Dominance transferred on ANY rung = entry cycle is active (not first strike)
-   bool _domTransferred = _inl_dom_m1>=50.0||_inl_dom_m3>=50.0||_inl_dom_m5>=50.0||_inl_dom_m15>=50.0||_inl_dom_h1>=50.0;
-   // ENTRY READINESS: the build-vs-execute distinction from the spec
-   // "Entry Active" = a rung in Return AND dominance transferred
-   // "Pre-entry" = terminal sequence with dominance building OR near flip zone with dom > 40
-   // This replaces the hard phase gate with the spec's actual requirement
-   bool _entryActive = _anyRungInReturn && _domTransferred;
-   bool _preEntry = _anyRungInTerminal && (_domTransferred || (nearFlipzone && _inl_dom_m5>=40.0));
-   bool _entryReadyGate = _entryActive || _preEntry;
-   // --- EXPANDED ENTRY CONDITIONS ---
-   // Old: ONLY fires in "Demand Return" phase on M5.
-   // New: ALSO fires during terminal sequence (Retr Induction, Retr Liquidity, Induction)
-   //      when entry readiness confirms the entry cycle is active (not first strike).
-   // Spec: "entry happens AT the flip zone's terminal sequence completion"
+   bool _terminalOrReturn = _anyRungInReturn || _anyRungInTerminal;
+
+   // GATE 5: FU OR STRUCTURAL CONFIRMATION — FU candle active OR strong structural evidence
+   // Check FU blocks directly from global arrays (die_anyBullFUActive declared later in code)
+   bool _fuConfirmLong=false, _fuConfirmShort=false;
+   for(int _fq=ArraySize(g_fu_top)-1;_fq>=0;_fq--){
+      if((i-g_fu_birthBar[_fq])<=fuMaxBarsActive && g_fu_state[_fq]!="Invalidated"){
+         if(g_fu_dir[_fq]==1) _fuConfirmLong=true;
+         if(g_fu_dir[_fq]==-1) _fuConfirmShort=true;
+      }
+   }
+   bool _structConfirmLong  = liqSweepOK && retracementInductionConf;
+   bool _structConfirmShort = liqSweepOK && retracementInductionConf;
+   bool _confirmationLong  = _fuConfirmLong || _structConfirmLong;
+   bool _confirmationShort = _fuConfirmShort || _structConfirmShort;
+
+   // COMBINED ENTRY READINESS — ALL gates must pass (like the perfect sell)
+   bool _entryReadyGate = _atFlipZone && _highDomM5plus && _terminalOrReturn;
+
+   // --- ENTRY CONDITIONS (calibrated to Image 1+2 quality) ---
    bool _terminalPhaseLong = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
         ie1a_currentPhase=="Demand Return");
    bool _terminalPhaseShort = (ie1a_currentPhase=="Retracement Induction"||ie1a_currentPhase=="Retracement Liquidity"||
         ie1a_currentPhase=="Supply Return");
-   bool beliefEntryLong=direction==1&&_terminalPhaseLong&&_entryReadyGate&&g_demandReturnBelief>40&&g_expansionBelief<65;
-   bool beliefEntryShort=direction==-1&&_terminalPhaseShort&&_entryReadyGate&&g_demandReturnBelief>40&&g_expansionBelief<65;
-   bool longSignal=showSignals&&beliefEntryLong&&htfAligned&&!signalLocked&&!withinLongLock&&edgePassesFilter&&preConvOK_long&&inducOK_long&&structLongOK&&liqSweepOK&&obFresh&&htfLongOK&&erf_entryGate;
-   bool shortSignal=showSignals&&beliefEntryShort&&htfAligned&&!signalLocked&&!withinShortLock&&edgePassesFilter&&preConvOK_short&&inducOK_short&&structShortOK&&liqSweepOK&&obFresh&&htfShortOK&&erf_entryGate;
+   bool beliefEntryLong=direction==1&&_terminalPhaseLong&&_entryReadyGate&&_multiTfLong&&_confirmationLong&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool beliefEntryShort=direction==-1&&_terminalPhaseShort&&_entryReadyGate&&_multiTfShort&&_confirmationShort&&g_demandReturnBelief>40&&g_expansionBelief<60;
+   bool longSignal=showSignals&&beliefEntryLong&&!signalLocked&&!withinLongLock&&edgePassesFilter&&obFresh&&erf_entryGate;
+   bool shortSignal=showSignals&&beliefEntryShort&&!signalLocked&&!withinShortLock&&edgePassesFilter&&obFresh&&erf_entryGate;
    if(longSignal){ g_lastSignalBar=i; g_lastLongBar=i; g_engineArmed=false; }
    if(shortSignal){ g_lastSignalBar=i; g_lastShortBar=i; g_engineArmed=false; }
    gBarLong=longSignal; gBarShort=shortSignal; gBarLongPx=lo-atr*0.7; gBarShortPx=hi+atr*0.7;
@@ -2260,12 +2284,11 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
             }
          }
          //--- entry readiness (the build-vs-execute call) ---
-         // NOTE: The FUNCTIONAL entry gate is now computed INLINE on every bar (see Section 21:
-         // _entryActive, _preEntry, _entryReadyGate). This display variable is for dashboard only.
-         // It uses the same logic: dominance transferred + rung in Return = Entry Active.
+         // NOTE: The FUNCTIONAL entry gate is now computed INLINE on every bar (see Section 21).
+         // This display variable mirrors the inline logic for dashboard only.
          if(cur_mtfEntryFresh)                                  cur_entryReady=(cur_mtfEntryDom>=50.0?"Entry Active":"Pre-entry");
-         else if(_entryActive)                                  cur_entryReady="Entry Active";
-         else if(_preEntry)                                     cur_entryReady="Pre-entry";
+         else if(_atFlipZone && _highDomM5plus && _terminalOrReturn) cur_entryReady="Entry Active";
+         else if(_anyRungInTerminal && _inl_dom_m5>=40.0)       cur_entryReady="Pre-entry";
          else if(cur_transState=="TERMINAL"||cur_transState=="APPROACHING FLIP") cur_entryReady="Pre-entry";
          else if(cur_transState=="TRANSITION COMPLETE"||cur_transState=="RETRACEMENT") cur_entryReady="Building";
          else if(cur_transState=="TRANSITION")                  cur_entryReady="Early";
