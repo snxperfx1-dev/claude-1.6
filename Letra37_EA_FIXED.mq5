@@ -4336,6 +4336,12 @@ void TryEnter()
              && !(InpAggReqTime && InpTIEBlockOpposed && ctx_timeAlign>=InpTIEStrongAlign && ctx_timeDir!=0 && ctx_timeDir!=adir);
       if(ok){ dir=adir; aggressive=true; }
    }
+   // DEATH PATH: resolve dir from death engine BEFORE the dir==0 check
+   if(dir==0 && cur_ownerDeathSignals >= 2){
+      int _macD2 = (cur_dirH4!=0)?cur_dirH4:(cur_dirH1!=0)?cur_dirH1:0;
+      if(_macD2==-1 && cur_dirM5==1) dir=1;
+      if(_macD2==1  && cur_dirM5==-1) dir=-1;
+   }
    if(dir==0){ gEntryBlock=(InpUseV60Context&&InpAggressiveEntry)?"no signal / v60 not aligned":"no signal (awaiting Return)"; return; }
 
    // ═══════════════════════════════════════════════════════════════════
