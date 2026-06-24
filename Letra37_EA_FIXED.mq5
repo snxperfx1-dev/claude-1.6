@@ -2031,40 +2031,83 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    //==============================================================
    // SECTION 24 — TRADE STATE
    //==============================================================
-   // EXIT at the OPPOSING flip zone (the one price is heading TOWARD)
-   // Long entered at demand → rides UP → exits at the SUPPLY flip zone above
-   // Short entered at supply → rides DOWN → exits at the DEMAND flip zone below
-   // Find the opposing flip zone: a curve with the OPPOSITE direction whose flip is ahead of price
-   double _exitFlipLong=NA, _exitFlipShort=NA;
-   for(int _ef=5;_ef>=2;_ef--){  // H4 > H1 > M15 > M5 priority
-      if(naf(_exitFlipLong) && cur_cv_dir[_ef]==-1 && !naf(cur_cv_flipBot[_ef]) && cur_cv_flipBot[_ef]>cl)
-         _exitFlipLong=cur_cv_flipBot[_ef];   // bearish curve's flip zone is ABOVE price = long target
-      if(naf(_exitFlipShort) && cur_cv_dir[_ef]==1 && !naf(cur_cv_flipTop[_ef]) && cur_cv_flipTop[_ef]<cl)
-         _exitFlipShort=cur_cv_flipTop[_ef];  // bullish curve's flip zone is BELOW price = short target
-   }
-   // Fallback to wave target if no opposing flip zone found
-   if(naf(_exitFlipLong) && !naf(se5_tgt) && se5_tgt>cl) _exitFlipLong=se5_tgt;
-   if(naf(_exitFlipShort) && !naf(se5_tgt) && se5_tgt<cl) _exitFlipShort=se5_tgt;
-   bool _atTargetLongExit = g_tradeDir==1 && !naf(_exitFlipLong) && cl>=_exitFlipLong-atr*0.3;
-   bool _atTargetShortExit = g_tradeDir==-1 && !naf(_exitFlipShort) && cl<=_exitFlipShort+atr*0.3;
-   bool _flipZoneExit = _atTargetLongExit || _atTargetShortExit;
-   // When target reached → switch hunt mode to the opposite direction at the reached zone
-   // Long reached supply flip → hunt SELLS at supply (above that flip zone)
-   if(_atTargetLongExit && g_huntMode!=-1){
-      g_huntMode=-1; g_huntActivatedBar=i;
-      g_huntDemandLo=nz(_exitFlipLong,cl);           // sell hunt starts at the reached flip
-      g_huntDemandHi=g_huntDemandLo+atr*3.0;
-   }
-   // Short reached demand flip → hunt BUYS at demand (below that flip zone)
-   if(_atTargetShortExit && g_huntMode!=1){
-      g_huntMode=1; g_huntActivatedBar=i;
-      g_huntDemandHi=nz(_exitFlipShort,cl);          // buy hunt starts at the reached flip
-      g_huntDemandLo=g_huntDemandHi-atr*3.0;
-   }
+   // ═══════════════════════════════════════════════════════════════════
+   // MULTI-TIMEFRAME CURVE OWNERSHIP ENGINE (full spec implementation)
+   // Entries belong to the lower timeframe.
+   // Direction belongs to the owner.
+   // Targets belong to the owner.
+   // Exits occur when ownership completes or transfers.
+   // Price is always trying to complete the highest active expansion.
+   // ═══════════════════════════════════════════════════════════════════
 
-   // EXIT CONDITIONS
+   // --- OWNERSHIP DETECTION: which curve currently owns the expansion? ---
+   // Ownership score = phaseWeight × dominance × waveProgress
+   // EXPANSION > IMPULSE > TRANSITION in priority
+   // Highest score on the highest TF wins.
+   double _ownScore[6]; int _ownerIdx=-1; double _bestOwnScore=0;
+   for(int _oi=0;_oi<6;_oi++){
+      int _ph=cur_cv_phase[_oi]; int _d=cur_cv_dir[_oi];
+      double _wp=cur_cv_wp[_oi]; double _dm=cur_cv_dom[_oi];
+      // Phase weight: EXPANSION family = high, IMPULSE = med, TRANSITION = low, others = 0
+      double _phW=0;
+      if(_ph>=1&&_ph<=6) _phW=1.0;         // Expansion family (phases 1-6 = expansion/new high/low)
+      else if(_ph>=8&&_ph<=11) _phW=0.6;   // Retracement/terminal family (moving toward target)
+      else if(_ph==7) _phW=0.3;            // Transition
+      else if(_ph>=12) _phW=0.8;           // Return (confirmation)
+      _ownScore[_oi] = _phW * fmax2(_dm,10.0)/100.0 * fmax2(_wp,10.0)/100.0 * (_oi+1)*0.2; // higher TF = heavier weight
+      if(_d!=0 && _ownScore[_oi]>_bestOwnScore){ _bestOwnScore=_ownScore[_oi]; _ownerIdx=_oi; }
+   }
+   // Owner curve properties
+   int    _ownerDir = _ownerIdx>=0 ? cur_cv_dir[_ownerIdx] : 0;
+   double _ownerFlipTop = _ownerIdx>=0 ? cur_cv_flipTop[_ownerIdx] : NA;
+   double _ownerFlipBot = _ownerIdx>=0 ? cur_cv_flipBot[_ownerIdx] : NA;
+   double _ownerOrigin = _ownerIdx>=0 ? cur_cv_origin[_ownerIdx] : NA;
+   double _ownerExtreme = _ownerIdx>=0 ? cur_cv_extreme[_ownerIdx] : NA;
+   // --- DESTINATION: owner's target zone (demand for bearish, supply for bullish) ---
+   // Bearish owner → destination = demand zone below (bullish curve's flip on same or lower TF)
+   // Bullish owner → destination = supply zone above (bearish curve's flip on same or lower TF)
+   double _destination=NA;
+   if(_ownerDir==-1){
+      // Bearish expansion → target is DEMAND below. Find highest TF bullish flip below price.
+      for(int _ti=5;_ti>=0;_ti--){
+         if(cur_cv_dir[_ti]==1 && !naf(cur_cv_flipTop[_ti]) && cur_cv_flipTop[_ti]<cl){
+            _destination=cur_cv_flipTop[_ti]; break;  // bullish curve's flip TOP = top of demand zone
+         }
+      }
+      // Fallback: owner's own origin or wave target
+      if(naf(_destination)){
+         if(!naf(_ownerOrigin) && _ownerOrigin<cl) _destination=_ownerOrigin;
+         else if(!naf(se5_tgt) && se5_tgt<cl) _destination=se5_tgt;
+      }
+   } else if(_ownerDir==1){
+      // Bullish expansion → target is SUPPLY above. Find highest TF bearish flip above price.
+      for(int _ti=5;_ti>=0;_ti--){
+         if(cur_cv_dir[_ti]==-1 && !naf(cur_cv_flipBot[_ti]) && cur_cv_flipBot[_ti]>cl){
+            _destination=cur_cv_flipBot[_ti]; break;  // bearish curve's flip BOT = bottom of supply zone
+         }
+      }
+      if(naf(_destination)){
+         if(!naf(_ownerExtreme) && _ownerExtreme>cl) _destination=_ownerExtreme;
+         else if(!naf(se5_tgt) && se5_tgt>cl) _destination=se5_tgt;
+      }
+   }
+   // --- DYNAMIC TARGET ESCALATION ---
+   // If current owner's target is reached, check if a higher TF now dominates → extend target
+   bool _destReached = !naf(_destination) && (g_tradeDir==1 ? cl>=_destination-atr*0.3 : g_tradeDir==-1 ? cl<=_destination+atr*0.3 : false);
+   // --- EXIT CONDITIONS ---
+   // Exit when: owner destination reached OR ownership changes against the trade
+   bool _ownershipLost = (g_tradeDir==1 && _ownerDir==-1) || (g_tradeDir==-1 && _ownerDir==1);
    bool _domLost = _inl_dom_m5<25.0 && _inl_dom_m15<25.0 && _inl_dom_h1<25.0 && !_anyRungInReturn && !_anyRungInTerminal;
-   bool exitCondition=_flipZoneExit||(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&!obFresh)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
+   bool exitCondition=_destReached||_ownershipLost||(g_tradeDir==1&&bearBOS)||(g_tradeDir==-1&&bullBOS)||(g_tradeDir==1&&bearConvShift&&energy<g_prevEnergy)||(g_tradeDir==-1&&bullConvShift&&energy<g_prevEnergy)||(g_tradeDir!=0&&safeToReset)||(g_tradeDir==1&&bullInvalid)||(g_tradeDir==-1&&bearInvalid)||(g_tradeDir!=0&&_domLost);
+   // On destination reached → switch hunt mode to opposite at the reached zone
+   if(_destReached && g_tradeDir==1 && g_huntMode!=-1){
+      g_huntMode=-1; g_huntActivatedBar=i;
+      g_huntDemandLo=nz(_destination,cl); g_huntDemandHi=g_huntDemandLo+atr*3.0;
+   }
+   if(_destReached && g_tradeDir==-1 && g_huntMode!=1){
+      g_huntMode=1; g_huntActivatedBar=i;
+      g_huntDemandHi=nz(_destination,cl); g_huntDemandLo=g_huntDemandHi-atr*3.0;
+   }
    if(longSignal){ g_tradeDir=1; g_exitFiredBar=-1; }
    else if(shortSignal){ g_tradeDir=-1; g_exitFiredBar=-1; }
    else if(exitCondition&&g_tradeDir!=0){ g_exitFiredBar=i; g_tradeDir=0; }
