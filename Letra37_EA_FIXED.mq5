@@ -1971,15 +1971,24 @@ void ProcessBar(const int i,const double &o[],const double &h[],const double &l[
    // Fix: Use H4 > H1 > fractalStack as stable directional authority.
    // Counter-HTF trades ONLY allowed for anticipatory entries (dom>=80% + terminal on a rung)
    int _macroDir = (l4_dir!=0) ? l4_dir : (l2_dir!=0) ? l2_dir : fractalStackDir;
-   // v12: When macro curve is in TRANSITION (phase 7+), its expansion is DYING.
-   // The lower TF counter-move (bullish M5 vs bearish H4 in transition) is the EMERGING wave.
-   // Allow the counter-direction when the macro curve is no longer expanding.
-   int _macroPhase = (l4_dir!=0) ? cur_cv_phase[5] : (l2_dir!=0) ? cur_cv_phase[4] : cur_cv_phase[2];
-   bool _macroTransitioning = _macroPhase>=7;  // phase 7+ = transition/retracement/terminal/return (expansion OVER)
+   // v12: Gate 7 uses OWNERSHIP TRANSFER + EXHAUSTION, not phase numbers.
+   // The question is not "what phase is H4 in?" but "has the old curve's dominance collapsed?"
+   // Old curve dominance < 50% AND transfer progress > 60% AND exhaustion confirms → allow counter.
+   double _macroDom = (l4_dir!=0) ? nz(MapVal(se240.t,se240.dom,se240.n,ct)) : (l2_dir!=0) ? nz(MapVal(se60.t,se60.dom,se60.n,ct)) : nz(MapVal(se5.t,se5.dom,se5.n,ct));
+   double _macroWP = (l4_dir!=0) ? cur_cv_wp[5] : (l2_dir!=0) ? cur_cv_wp[4] : cur_cv_wp[2];
+   // Old curve dominance = 100 - dom (dom measures the recursive/new curve's share)
+   double _oldCurveDom = 100.0 - _macroDom;
+   // Transfer progress: how far the handover has gone (dom itself is the new curve's ownership %)
+   double _transferProgress = _macroDom;
+   // Exhaustion: combination of high wave progress + low old dominance + high transfer
+   double _macroExhaustion = fmin2(100.0, _macroWP*0.40 + _transferProgress*0.35 + (100.0-_oldCurveDom)*0.25);
+   // Allow counter-direction ONLY when old curve is truly dying (ownership-based, not phase-based)
+   bool _macroExhaustedLong = (_macroDir==-1) && (_oldCurveDom<50.0) && (_transferProgress>40.0) && (_macroExhaustion>55.0);
+   bool _macroExhaustedShort = (_macroDir==1) && (_oldCurveDom<50.0) && (_transferProgress>40.0) && (_macroExhaustion>55.0);
    bool _anticipatoryLong  = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
    bool _anticipatoryShort = (_inl_dom_m5>=80.0||_inl_dom_m15>=80.0||_inl_dom_h1>=80.0) && (_anyRungInReturn||_inl_ph_m5>=10||_inl_ph_m1>=10);
-   bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong || (_macroDir==-1 && _macroTransitioning);
-   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || (_macroDir==1 && _macroTransitioning);
+   bool _allowLong  = (_macroDir==1) || (_macroDir==0) || _anticipatoryLong || _macroExhaustedLong;
+   bool _allowShort = (_macroDir==-1) || (_macroDir==0) || _anticipatoryShort || _macroExhaustedShort;
 
    // COMBINED ENTRY READINESS — flip zone is NOT required for entry (entries are at demand/supply AWAY from flip)
    // The flip context gate (_flipCtxAllowLong/Short) already ensures correct side (below/above flip)
