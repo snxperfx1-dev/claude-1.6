@@ -4349,7 +4349,8 @@ void TryEnter()
    //  trade the NEW curve even though the OLD owner/consensus still reads the prior direction -
    //  that reversal IS the trade, so it must NOT be vetoed.
    bool _terminalEntry = (cur_entryReady=="Entry Active") || _freshRet
-                      || (_atFlipNow && _shiftsOK) || _fast || (_ctxOn && ctx_termComplete);
+                      || (_atFlipNow && _shiftsOK) || _fast || (_ctxOn && ctx_termComplete)
+                      || (cur_ownerDeathSignals >= 2);  // ownership death = terminal entry confirmed
    //  WITH-CURVE = aligned with the live owning curve (continuation - riding the dominant move).
    bool _withCurve = (cur_ownerDir!=0 && dir==cur_ownerDir);
 
