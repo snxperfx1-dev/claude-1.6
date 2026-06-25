@@ -4705,13 +4705,11 @@ void ManagePositions()
 
       //==============================================================
       // 30-MIN TRADE QUALITY PROTECTION
-      // Log: tracks the original spec entry time in MgRegister.
-      // IN PROFIT (posProfit > 0, L1 not hit): aggressive trail -- lock in $400-$800.
-      // AT LOSS / FLAT (posProfit <= 0, L1 not hit): protection floor at entry - 0.25R.
-      // Escalation at 45 min: close 50% if still no L1.
       //==============================================================
       double posProfit=PositionGetDouble(POSITION_PROFIT);
       double posLots  =PositionGetDouble(POSITION_VOLUME);
+      // heldBars computed here so QProt log can use it (also used by hold gate below)
+      int heldBars=(int)((TimeCurrent()-(datetime)PositionGetInteger(POSITION_TIME))/MathMax(PeriodSeconds(_Period),1));
       if(InpQProtEnabled && mi>=0){
          // -- continuously update MFE / MAE (in R) --
          double excursion=(dir==1?(mkt-openP):(openP-mkt));
@@ -4920,7 +4918,7 @@ void ManagePositions()
       }
 
       //--- minimum hold gate: never exit on the entry bar (noise) ---
-      int heldBars=(int)((TimeCurrent()-(datetime)PositionGetInteger(POSITION_TIME))/MathMax(PeriodSeconds(_Period),1));
+      // heldBars already computed above (before QProt block)
       if(heldBars<InpMinHoldBars) continue;
 
       //--- EXIT 1: OWNERSHIP TRANSFER -- the curve that owns price has fully transferred
