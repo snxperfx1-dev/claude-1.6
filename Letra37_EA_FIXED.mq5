@@ -2992,7 +2992,7 @@ void ResetState()
    ArrayFree(gMgP1Done);ArrayFree(gMgP2Done);ArrayFree(gMgP3Done);ArrayFree(gMgP4Done);ArrayFree(gMgP5Done);
    ArrayFree(gMgTrailing);ArrayFree(gMgTrailSL);
    ArrayFree(gMgEntryTime);ArrayFree(gMgMFE);ArrayFree(gMgMAE);ArrayFree(gMgQProtMode);ArrayFree(gMgQExit50);
-   ArrayFree(gMgIsDeathEntry);
+   ArrayFree(gMgIsDeathEntry);ArrayFree(gMgTradeType);
    ArrayFree(g_fu_top);ArrayFree(g_fu_bot);ArrayFree(g_fu_birthBar);ArrayFree(g_fu_dir);ArrayFree(g_fu_state);
    g_fuw_tip=NA;g_fuw_bodyHigh=NA;g_fuw_bodyLow=NA;g_fuw_mid=NA;g_fuw_mid38=NA;g_fuw_mid62=NA;g_fuw_dir=0;g_fuw_leftPool=NA;g_fuw_bar=-1;g_fuw_valid=false;g_fuw_strength=NA;
    g_afe_step=0;g_afe_origin=NA;g_afe_originDir=0;g_afe_upperFlip=NA;g_afe_lowerFlip=NA;g_afe_upperFlipRole="-";g_afe_activeDest=NA;g_afe_target=NA;g_afe_selfReturnDone=false;g_afe_continuation=false;
@@ -3809,6 +3809,19 @@ input double InpQProtSLFrac     = 0.25; // Protection SL = entry - this * initia
 input bool   InpQEscalHalf      = true;  // TRUE=close 50% at escalation, FALSE=close 100%
 input int    InpDeathMinHoldBars = 6;   // Death entries: min bars held before ownership-transfer exit can fire (default 6=90min on M15; stops churn)
 
+input group "Letra37 EA - Session & Signal Quality Filters"
+input bool   InpBlockD4          = true;  // BLOCK D=4/4 entries (consensus = late entry, avg R=0.38, EV negative)
+input bool   InpBlockD2London    = true;  // Block D=2/4 entries during London session 06-11 (require D=3+ - London open wicks tight SLs)
+input bool   InpBlockD2Tuesday   = true;  // Block D=2/4 entries on Tuesdays (27% of SL hits, only 15% of winners)
+input bool   InpBlockNewsWindow  = true;  // Block ALL entries during 14:45-15:30 server time (NFP/FOMC/CPI data window - 21% win rate)
+input int    InpNewsHourStart    = 14;    // News window: start hour (server time)
+input int    InpNewsMinStart     = 45;    // News window: start minute
+input int    InpNewsHourEnd      = 15;    // News window: end hour
+input int    InpNewsMinEnd       = 30;    // News window: end minute
+input double InpBEAtrBuf         = 0.30; // Breakeven SL buffer for MOMENTUM trades (xATR). Old=1pt, now ~1-2 pts breathing room
+input double InpBEAtrCampaign    = 0.50; // Breakeven SL buffer for CAMPAIGN trades (Asia/Close D=2/4 - wider: long slow builds wick deeper)
+input int    InpCampaignProtMin  = 120;  // QProt: age threshold (minutes) for CAMPAIGN trades before protection fires (vs InpQProtMinutes for momentum)
+
 //==================================================================
 // EA GLOBALS
 //==================================================================
@@ -3844,6 +3857,7 @@ double   gMgMAE[];        // max adverse excursion in R  (updated every tick)
 bool     gMgQProtMode[];  // protection mode active (30-min triggered)
 bool     gMgQExit50[];    // escalation 50% partial already done (45-min)
 bool     gMgIsDeathEntry[];// true = entry came from death fast-path (churn fix)
+int      gMgTradeType[];   // 0=Campaign (Asia/Close D=2/4: patient multi-session), 1=Momentum (all others)
 
 //==================================================================
 // HELPERS
@@ -3922,7 +3936,7 @@ void ComputeARC()
 
 //--- management memory ---
 int MgIndex(const ulong tk){ for(int q=0;q<ArraySize(gMgTicket);q++) if(gMgTicket[q]==tk) return(q); return(-1); }
-void MgRegister(const ulong tk,const double initSL,const double tp1,const int dir,const bool isDeathEntry=false)
+void MgRegister(const ulong tk,const double initSL,const double tp1,const int dir,const bool isDeathEntry=false,const int tradeType=1)
 {
    if(MgIndex(tk)>=0) return;
    int s=ArraySize(gMgTicket);
@@ -3930,7 +3944,7 @@ void MgRegister(const ulong tk,const double initSL,const double tp1,const int di
    ArrayResize(gMgP1Done,s+1);ArrayResize(gMgP2Done,s+1);ArrayResize(gMgP3Done,s+1);ArrayResize(gMgP4Done,s+1);ArrayResize(gMgP5Done,s+1);
    ArrayResize(gMgTrailing,s+1);ArrayResize(gMgTrailSL,s+1);
    ArrayResize(gMgEntryTime,s+1);ArrayResize(gMgMFE,s+1);ArrayResize(gMgMAE,s+1);
-   ArrayResize(gMgQProtMode,s+1);ArrayResize(gMgQExit50,s+1);ArrayResize(gMgIsDeathEntry,s+1);
+   ArrayResize(gMgQProtMode,s+1);ArrayResize(gMgQExit50,s+1);ArrayResize(gMgIsDeathEntry,s+1);ArrayResize(gMgTradeType,s+1);
    gMgTicket[s]=tk; gMgInitSL[s]=initSL; gMgTP1[s]=tp1; gMgPartialDone[s]=false; gMgBEDone[s]=false; gMgDir[s]=dir;
    gMgP1Done[s]=false; gMgP2Done[s]=false; gMgP3Done[s]=false; gMgP4Done[s]=false; gMgP5Done[s]=false;
    gMgTrailing[s]=false; gMgTrailSL[s]=0.0;
@@ -3938,6 +3952,7 @@ void MgRegister(const ulong tk,const double initSL,const double tp1,const int di
    gMgEntryTime[s]=TimeCurrent(); gMgMFE[s]=0.0; gMgMAE[s]=0.0;
    gMgQProtMode[s]=false; gMgQExit50[s]=false;
    gMgIsDeathEntry[s]=isDeathEntry;
+   gMgTradeType[s]=tradeType;
 }
 void MgCleanup()
 {
@@ -3948,7 +3963,7 @@ void MgCleanup()
          ArrayRemove(gMgTrailing,q,1);ArrayRemove(gMgTrailSL,q,1);
          ArrayRemove(gMgEntryTime,q,1);ArrayRemove(gMgMFE,q,1);ArrayRemove(gMgMAE,q,1);
          ArrayRemove(gMgQProtMode,q,1);ArrayRemove(gMgQExit50,q,1);
-         ArrayRemove(gMgIsDeathEntry,q,1);
+         ArrayRemove(gMgIsDeathEntry,q,1);ArrayRemove(gMgTradeType,q,1);
       }
    }
 }
@@ -4340,16 +4355,41 @@ void TryEnter()
 {
    int dir=DesiredDirection();
    bool aggressive=false, fuEntry=false, mtfEntry=false;
-   // ???????????????????????????????????????????????????????????????
+   // ================================================================
    // DEATH PATH -- HIGHEST PRIORITY. Checked before ANY other logic.
    // When 2+ death signals confirmed, direction is set immediately.
    // Macro curve dying -> trade the opposing direction. No prerequisites.
-   // ???????????????????????????????????????????????????????????????
+   // ================================================================
    if(cur_ownerDeathSignals >= 2){
       int _macDeath = (cur_dirH4!=0)?cur_dirH4:(cur_dirH1!=0)?cur_dirH1:0;
       if(_macDeath != 0 && dir==0) dir = -_macDeath;  // dying macro -> oppose it
       // death fast-path: go straight to order, skip all intermediate gates
       if(_macDeath != 0){
+         // -- SIGNAL QUALITY + SESSION GATES (from deep audit) ----------
+         // These filters remove the statistically confirmed loss clusters:
+         // D=4/4 (EV negative), London D=2/4 (20-29% win), Tuesday D=2/4 (0.56:1),
+         // and the 14:45-15:30 news window (21% win, 10% of all hard SL).
+         MqlDateTime _dte; TimeToStruct(TimeCurrent(),_dte);
+         int _eh=_dte.hour, _em=_dte.min, _wd=_dte.day_of_week;
+         bool _isLondon =(_eh>=6 && _eh<=11);
+         bool _isTuesday=(_wd==2);
+         bool _isNews   =InpBlockNewsWindow && ((_eh==InpNewsHourStart && _em>=InpNewsMinStart)||(_eh==InpNewsHourEnd && _em<=InpNewsMinEnd));
+         bool _isAsia   =(_eh>=0 && _eh<=5);
+         bool _isClose  =(_eh>=18);
+         // Block D=4/4 (consensus = late, avg R=0.38, EV<0)
+         if(InpBlockD4 && cur_ownerDeathSignals>=4){ gEntryBlock="D=4/4 blocked (late consensus)"; return; }
+         // Block D=2/4 during London open (20-29% win rate, wicks tight SLs)
+         if(InpBlockD2London && _isLondon && cur_ownerDeathSignals<=2){ gEntryBlock="D=2/4 blocked in London session"; return; }
+         // Block D=2/4 on Tuesdays (27% SL hits vs 15% winners)
+         if(InpBlockD2Tuesday && _isTuesday && cur_ownerDeathSignals<=2){ gEntryBlock="D=2/4 blocked on Tuesday"; return; }
+         // Block news window 14:45-15:30 (data releases blow through tight SLs)
+         if(_isNews){ gEntryBlock="news window blocked ("+IntegerToString(_eh)+":"+IntegerToString(_em)+")"; return; }
+
+         // -- TRADE TYPE CLASSIFICATION (drives BE SL width + QProt threshold) --
+         // Campaign (type 0): Asia/Close D=2/4 -- slow multi-session hold, needs wide BE
+         // Momentum (type 1): all other confirmed entries -- session move, tighter mgmt
+         int _tradeType = ((_isAsia || _isClose) && cur_ownerDeathSignals==2) ? 0 : 1;
+
          if(dir==1 && !InpTradeLongs){ gEntryBlock="longs off"; return; }
          if(dir==-1 && !InpTradeShorts){ gEntryBlock="shorts off"; return; }
          if(cur_invInvalidated){ gEntryBlock="invalidated"; return; }
@@ -4372,12 +4412,13 @@ void TryEnter()
          double slD=ComputeStructureSL(dir,entryD,false,false);
          double lotD=CalcLot(entryD,slD);
          if(!MarginOK(dir,lotD,entryD)){ gEntryBlock="insufficient margin"; return; }
-         string cmtD=InpComment+" DEATH"+IntegerToString(cur_ownerDeathSignals);
+         string _typeTx=(_tradeType==0?"CAMP":"MOM");
+         string cmtD=InpComment+" DEATH"+IntegerToString(cur_ownerDeathSignals)+" "+_typeTx;
          bool okD=(dir==1)?trade.Buy(lotD,_Symbol,askD,slD,0.0,cmtD):trade.Sell(lotD,_Symbol,bidD,slD,0.0,cmtD);
          if(!okD && MktClosed()) return;
-         MgRegister(trade.ResultOrder(),slD,NA,dir,true); // isDeathEntry=true
-         gTradesToday++; gEntryBlock="ENTERED DEATH"+IntegerToString(cur_ownerDeathSignals);
-         if(InpDebugEntries) Print("=== ENTRY DEATH ",(dir==1?"BUY":"SELL")," D=",cur_ownerDeathSignals,"/4 @",DoubleToString(entryD,_Digits)," SL=",DoubleToString(slD,_Digits));
+         MgRegister(trade.ResultOrder(),slD,NA,dir,true,_tradeType);
+         gTradesToday++; gEntryBlock="ENTERED DEATH"+IntegerToString(cur_ownerDeathSignals)+" "+_typeTx;
+         if(InpDebugEntries) Print("=== ENTRY DEATH ",(dir==1?"BUY":"SELL")," D=",cur_ownerDeathSignals,"/4 type=",_typeTx," @",DoubleToString(entryD,_Digits)," SL=",DoubleToString(slD,_Digits));
          return;
       }
    }
@@ -4682,7 +4723,7 @@ void ManagePositions()
          int ageMin=(int)((TimeCurrent()-gMgEntryTime[mi])/60);
 
          // -- QUALITY LOG: emit once per bar when protection is relevant --
-         bool logBar=(heldBars>=1 && ageMin>=InpQProtMinutes && !gMgP1Done[mi]);
+         bool logBar=(heldBars>=1 && ageMin>=(mi>=0&&gMgTradeType[mi]==0?InpCampaignProtMin:InpQProtMinutes) && !gMgP1Done[mi]);
          if(logBar){
             string qLog="QUALITY: AgeMin="+IntegerToString(ageMin)+
                          " L1Hit="+(gMgP1Done[mi]?"Y":"N")+
@@ -4694,8 +4735,11 @@ void ManagePositions()
             if(InpDebugExits) Print(qLog);
          }
 
-         // -- age >= 30 min, L1 not yet hit --
-         if(ageMin>=InpQProtMinutes && !gMgP1Done[mi]){
+         // -- age >= 30 min (or 120 for Campaign trades), L1 not yet hit --
+         // Campaign trades use InpCampaignProtMin (default 120): slow Asia builds need time
+         // before management intervenes. Momentum uses InpQProtMinutes (default 30).
+         int _qprotThresh=(mi>=0 && gMgTradeType[mi]==0) ? InpCampaignProtMin : InpQProtMinutes;
+         if(ageMin>=_qprotThresh && !gMgP1Done[mi]){
             if(!gMgQProtMode[mi]){
                gMgQProtMode[mi]=true;
                if(InpDebugExits) Print("=== QPROT ON #",tk," age=",ageMin,"m  profit=",
@@ -4756,8 +4800,9 @@ void ManagePositions()
             }
          }
 
-         // -- ESCALATION: age >= 45 min, L1 still not hit --
-         if(ageMin>=InpQEscalMinutes && !gMgP1Done[mi] && !gMgQExit50[mi]){
+         // -- ESCALATION: age >= 45 min (or 180 for Campaign), L1 still not hit --
+         int _escalThresh=(mi>=0 && gMgTradeType[mi]==0) ? (InpCampaignProtMin+60) : InpQEscalMinutes;
+         if(ageMin>=_escalThresh && !gMgP1Done[mi] && !gMgQExit50[mi]){
             gMgQExit50[mi]=true;
             double escalLots=(InpQEscalHalf)?NormalizeLot(posLots*0.50):posLots;
             double minLot=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
@@ -4793,15 +4838,25 @@ void ManagePositions()
          if(closeLots<=0) closeLots=SymbolInfoDouble(_Symbol,SYMBOL_VOLUME_MIN);
 
          // Level 1 -- $900 profit: close 20% + move SL to breakeven
+         // BE SL uses ATR buffer (not 1 point): audit showed 88% of L1 trades wicked at 1-point BE.
+         // Campaign trades get wider buffer (0.5 ATR) -- slow builds retrace deeper before continuing.
+         // Momentum trades get 0.3 ATR -- tight enough to protect, wide enough to survive normal noise.
          if(!gMgP1Done[mi] && posProfit>=900.0){
             gMgP1Done[mi]=true;
             if(closeLots<posLots && trade.PositionClosePartial(tk,closeLots))
                if(InpDebugExits) Print("=== PARTIAL L1 @$900 closed ",DoubleToString(closeLots,2)," lots profit=",DoubleToString(posProfit,2));
-            // Move SL to breakeven (open price + 1 point buffer)
-            double beSL=(dir==1)?openP+_Point:openP-_Point;
-            if((dir==1&&beSL>curSL)||(dir==-1&&beSL<curSL))
-               if(trade.PositionModify(tk,beSL,0.0))
-                  if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits));
+            double _beAtr=(mi>=0 && gMgTradeType[mi]==0) ? atr*InpBEAtrCampaign : atr*InpBEAtrBuf;
+            double beSL=(dir==1)? NormPrice(openP+_beAtr) : NormPrice(openP-_beAtr);
+            if((dir==1&&beSL>curSL)||(dir==-1&&beSL<curSL)){
+               double _minD=MinStopDist()+_Point;
+               bool _sideOK=(dir==1?beSL<mkt-_minD:beSL>mkt+_minD);
+               if(_sideOK && trade.PositionModify(tk,beSL,0.0)){
+                  curSL=beSL;
+                  if(InpDebugExits) Print("=== BREAKEVEN SL moved to ",DoubleToString(beSL,_Digits),
+                     "  (type=",(gMgTradeType[mi]==0?"Campaign":"Momentum"),
+                     " buf=",DoubleToString(_beAtr,_Digits),")");
+               }
+            }
          }
          // Level 2 -- $1600 profit: close 20%
          else if(gMgP1Done[mi] && !gMgP2Done[mi] && posProfit>=1600.0){
